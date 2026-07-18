@@ -1,7 +1,7 @@
 import numpy as np
 import open3d as o3d
 import torch
-from edge_extraction.merging import compute_pairwise_distances, compute_pairwise_cosine_similarity
+from edge_extraction.merging import find_connected_line_components, query_radius_pairs
 from einops import rearrange
 from pytorch3d.transforms import quaternion_to_matrix
 from scipy.sparse.csgraph import connected_components
@@ -466,22 +466,6 @@ class GaussianCurveModel(GaussianModel):
             curve_sample_points = rearrange(self.get_curve_gaussians(t), 'm b c -> b m c')
             num_curves = self.get_curve_points.shape[0]
             curve_points = self.get_curve_points
-            start_points, end_points = curve_points[:, 0], curve_points[:, -1]
-            all_points = torch.cat([start_points, end_points], dim=0)
-            start_tangs = curve_points[:, 1] - curve_points[:, 0]
-            end_tangs = curve_points[:, 2] - curve_points[:, -1]
-            all_tangs = torch.cat([start_tangs, end_tangs], dim=0)
-            all_tangs = all_tangs / (torch.norm(all_tangs, dim=-1, keepdim=True)+1e-6)
-            similarity = torch.abs(torch.sum(all_tangs[None,:,:] * all_tangs[:,None,:], dim=-1))
-            dist = torch.cdist(all_points, all_points, p=2)
-            mask_merge = (dist < 2*distance_threshold) & (similarity> similarity_threshold)
-            adjacency_matrix = (mask_merge[0:num_curves, 0:num_curves] |
-                            mask_merge[0:num_curves, num_curves:] |
-                            mask_merge[num_curves:, 0:num_curves] |
-                            mask_merge[num_curves:, num_curves:])
-            confidence_matrix = torch.max(torch.max(similarity[0:num_curves, 0:num_curves],  similarity[0:num_curves, num_curves:]),
-                                          torch.max(similarity[num_curves:, 0:num_curves], similarity[num_curves:, num_curves:]))
-            # num_components, labels = connected_components(adjacency_matrix.cpu().numpy(), directed=True)
             merge_mask = torch.zeros(num_curves, dtype=torch.bool, device='cuda')
             new_curve_points = []
             new_features_dc = []
@@ -491,19 +475,68 @@ class GaussianCurveModel(GaussianModel):
             new_masks = []
             new_is_bezier = []
             components_indices = []
-            merged = set()
-            for i in range(num_curves):
-                if (i in merged) or (self.is_bezier[i].item() == False): #  w/o item note that is false is wrong
-                    continue
-                neighbors = torch.nonzero(adjacency_matrix[i]).squeeze(1).tolist()
+            bezier_idx = torch.where(self.is_bezier)[0]
+            bezier_idx_list = bezier_idx.tolist()
+            if len(bezier_idx_list) > 1:
+                bezier_curve_points = curve_points[bezier_idx]
+                start_points = bezier_curve_points[:, 0].detach().cpu().numpy()
+                end_points = bezier_curve_points[:, -1].detach().cpu().numpy()
+                all_points = np.concatenate([start_points, end_points], axis=0)
+                start_tangs = (bezier_curve_points[:, 1] - bezier_curve_points[:, 0]).detach().cpu().numpy()
+                end_tangs = (bezier_curve_points[:, 2] - bezier_curve_points[:, -1]).detach().cpu().numpy()
+                all_tangs = np.concatenate([start_tangs, end_tangs], axis=0)
+                all_tangs = all_tangs / np.clip(np.linalg.norm(all_tangs, axis=-1, keepdims=True), 1e-6, None)
 
-                neighbors = [j for j in neighbors if j not in merged and j != i and self.is_bezier[j].item()]
-                if not neighbors:
-                    continue  
-                best_j = max(neighbors, key=lambda j: confidence_matrix[i, j])
-                merged.add(i)
-                merged.add(best_j)
-                components_indices.append([i, best_j])
+                # Changed: only compare endpoint pairs found by a sparse radius query,
+                # instead of allocating dense [2N, 2N, 3] and [2N, 2N] tensors on GPU.
+                endpoint_pairs = query_radius_pairs(all_points, 2 * distance_threshold)
+                if endpoint_pairs.size > 0:
+                    endpoint_curve_ids = np.concatenate([
+                        np.arange(len(bezier_idx_list), dtype=np.int64),
+                        np.arange(len(bezier_idx_list), dtype=np.int64),
+                    ])
+                    curve_pairs = endpoint_curve_ids[endpoint_pairs]
+                    valid = curve_pairs[:, 0] != curve_pairs[:, 1]
+                    endpoint_pairs = endpoint_pairs[valid]
+                    curve_pairs = curve_pairs[valid]
+
+                    if endpoint_pairs.size > 0:
+                        similarities = np.abs(np.sum(
+                            all_tangs[endpoint_pairs[:, 0]] * all_tangs[endpoint_pairs[:, 1]],
+                            axis=-1,
+                        ))
+                        valid = similarities >= similarity_threshold
+                        curve_pairs = curve_pairs[valid]
+                        similarities = similarities[valid]
+
+                        pair_confidence = {}
+                        for pair, similarity_score in zip(curve_pairs.tolist(), similarities.tolist()):
+                            key = tuple(sorted(pair))
+                            best_score = pair_confidence.get(key)
+                            if best_score is None or similarity_score > best_score:
+                                pair_confidence[key] = similarity_score
+
+                        if pair_confidence:
+                            neighbors = [[] for _ in range(len(bezier_idx_list))]
+                            for (curve_i, curve_j), similarity_score in pair_confidence.items():
+                                neighbors[curve_i].append((curve_j, similarity_score))
+                                neighbors[curve_j].append((curve_i, similarity_score))
+
+                            merged = set()
+                            for local_i, global_i in enumerate(bezier_idx_list):
+                                if global_i in merged:
+                                    continue
+                                valid_neighbors = [
+                                    (bezier_idx_list[local_j], similarity_score)
+                                    for local_j, similarity_score in neighbors[local_i]
+                                    if bezier_idx_list[local_j] not in merged
+                                ]
+                                if not valid_neighbors:
+                                    continue
+                                best_j, _ = max(valid_neighbors, key=lambda item: item[1])
+                                merged.add(global_i)
+                                merged.add(best_j)
+                                components_indices.append([global_i, best_j])
 
             for component_indices in components_indices:
 
@@ -552,21 +585,22 @@ class GaussianCurveModel(GaussianModel):
                 line_segments = rearrange(self._curve_points[line_idx][:, [0,-1], :],
                                           'b m c -> b (m c)').cpu().numpy()
 
-                dist_matrix = compute_pairwise_distances(line_segments)
-                similarity_matrix = compute_pairwise_cosine_similarity(line_segments)
-                similarity_matrix = np.abs(similarity_matrix)
-                # Create adjacency matrix based on distance and similarity thresholds
-                adjacency_matrix = (dist_matrix <= distance_threshold) & (
-                        similarity_matrix >= similarity_threshold
+                # Changed: use sparse sampled-point neighbors for line components
+                # so large line sets do not build dense pairwise CPU matrices either.
+                labels = find_connected_line_components(
+                    line_segments,
+                    distance_threshold,
+                    similarity_threshold,
                 )
-                # Compute connected components
-                num_components, labels = connected_components(adjacency_matrix)
+                num_components = int(labels.max()) + 1 if len(labels) > 0 else 0
                 for component in range(num_components):
                     component_indices = np.where(labels == component)[0]
                     if len(component_indices) == 1:
                         continue
                     else:
-                        component_indices = line_idx[component_indices]
+                        component_indices = line_idx[
+                            torch.from_numpy(component_indices).to(line_idx.device, dtype=torch.long)
+                        ]
                         merge_mask[component_indices] = True
                         pts_curr = curve_sample_points[component_indices].cpu().numpy().reshape(-1, 3)
 

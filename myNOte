@@ -1,0 +1,64 @@
+# 配环境
+
+##
+git clone --recurse-submodules https://github.com/zhirui-gao/Curve-Gaussian.git
+
+conda create --prefix /root/autodl-tmp/envs/curveGS python=3.10 -y
+
+在 ~/.condarc 里添加路径, 之后 conda env list 就会显示名字了
+conda config --append envs_dirs /root/autodl-tmp/envs
+
+
+## 第一步：小依赖 + NVIDIA包 全从清华装（快）                                             
+pip install --no-cache-dir \
+filelock typing-extensions sympy networkx jinja2 fsspec numpy pillow mpmath MarkupSafe \
+nvidia-cuda-nvrtc==13.0.88 nvidia-cuda-runtime==13.0.96 nvidia-cuda-cupti==13.0.85 \
+nvidia-cudnn-cu13==9.15.1.9 nvidia-cublas==13.1.0.3 nvidia-cufft==12.0.0.61 \
+nvidia-curand==10.4.0.35 nvidia-cusolver==12.0.4.66 nvidia-cusparse==12.6.3.3 \
+nvidia-cusparselt-cu13==0.8.0 nvidia-nccl-cu13==2.28.9 nvidia-nvshmem-cu13==3.4.5 \
+nvidia-nvtx==13.0.85 nvidia-nvjitlink==13.0.88 nvidia-cufile==1.15.1.6 \
+cuda-bindings==13.0.3 cuda-pathfinder==1.5.6 triton==3.6.0 \
+-i https://pypi.tuna.tsinghua.edu.cn/simple
+
+## 第二步：只装 torch 本体，--no-deps 跳过依赖（慢速源只下这3个）
+pip install --no-cache-dir --no-deps \
+torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 \
+--index-url https://download.pytorch.org/whl/cu130
+
+## 验证
+python -c "import torch, torchvision, numpy; print('torch', torch.__version__);print('torchvision', torchvision.__version__); print('numpy', numpy.__version__); print('cuda', torch.cuda.is_available())"
+
+
+##
+python -m pip install plyfile tqdm opencv-python joblib
+
+##
+python -m pip install ./submodules/diff-cur-rasterization --no-build-isolation
+python -m pip install ./submodules/simple-knn --no-build-isolation
+python -m pip install ./submodules/fused-ssim --no-build-isolation
+
+pip install seaborn
+FORCE_CUDA=1 TORCH_CUDA_ARCH_LIST="8.9" pip install "git+https://github.com/facebookresearch/pytorch3d.git" --no-build-isolation
+pip install einops
+pip install scikit-image
+
+
+# 训练
+
+python train.py -s ~/autodl-tmp/datasets/Replica_Edge/room1 -m output/replica/room1 --quiet -r 2 --eval
+
+python edge_extraction/eval_replica.py --dataset_dir ~/autodl-tmp/datasets/Replica_Edge --base_dir output/replica
+
+爆显存：
+PYTORCH_ALLOC_CONF=expandable_segments:True python train.py -s ~/autodl-tmp/datasets/buaa1 -m output/buaa1 --quiet --eval --iteration 3000
+
+
+
+
+
+
+
+
+
+
+

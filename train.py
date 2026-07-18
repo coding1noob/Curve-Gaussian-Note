@@ -2,11 +2,13 @@ import torch.nn.functional as F
 import os
 import open3d as o3d
 import torch
+import numpy as np
 from random import randint
 from utils.loss_utils import l1_loss, ssim,  edge_aware_loss
 from gaussian_renderer import render
 import sys
 from edge_extraction.merging import merge_endpoints
+from scipy.spatial import cKDTree
 from scene import Scene, GaussianCurveModel
 from utils.general_utils import safe_state
 import uuid
@@ -34,6 +36,30 @@ try:
     SPARSE_ADAM_AVAILABLE = True
 except:
     SPARSE_ADAM_AVAILABLE = False
+
+
+def _find_sparse_curve_endpoint_pairs(curve_points, distance_threshold):
+    start_points = curve_points[:, 0].detach().cpu().numpy()
+    end_points = curve_points[:, -1].detach().cpu().numpy()
+    all_points = np.concatenate([start_points, end_points], axis=0)
+    if all_points.shape[0] < 2:
+        return np.empty((0,), dtype=np.int64), np.empty((0,), dtype=np.int64)
+
+    tree = cKDTree(all_points)
+    sparse_dist = tree.sparse_distance_matrix(tree, distance_threshold, output_type='coo_matrix')
+    if sparse_dist.nnz == 0:
+        return np.empty((0,), dtype=np.int64), np.empty((0,), dtype=np.int64)
+
+    num_curves = curve_points.shape[0]
+    curve_ids = np.concatenate([
+        np.arange(num_curves, dtype=np.int64),
+        np.arange(num_curves, dtype=np.int64),
+    ])
+    valid = sparse_dist.row < sparse_dist.col
+    valid &= curve_ids[sparse_dist.row] != curve_ids[sparse_dist.col]
+    rows = sparse_dist.row[valid].astype(np.int64, copy=False)
+    cols = sparse_dist.col[valid].astype(np.int64, copy=False)
+    return rows, cols
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, 
              checkpoint_iterations, checkpoint, debug_from):
@@ -134,15 +160,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
             curve_points = gaussians.get_curve_points
             start_points, end_points = curve_points[:,0], curve_points[:, -1] # N*3
             all_points = torch.cat([start_points, end_points], dim=0)
-            mask = torch.eye(len(start_points), dtype=torch.bool, device=start_points.device)
-            mask = torch.cat([torch.cat([mask, mask], dim=1), torch.cat([mask, mask], dim=1)], dim=0)
-            dist = torch.cdist(all_points, all_points, p=2)
             dis_thr = 0.05
-            with torch.no_grad():
-                valid_mask = (dist < dis_thr) & (~mask)
-            if valid_mask.any():
-                curve_conn = dist[valid_mask] 
-                curve_conn = curve_conn.mean()
+            curve_conn = torch.tensor(0.0, device=all_points.device)
+            # Changed: pick nearby endpoint pairs with a CPU KD-tree and only evaluate
+            # those distances on GPU, instead of building a dense 2N x 2N cdist matrix.
+            pair_rows, pair_cols = _find_sparse_curve_endpoint_pairs(curve_points, dis_thr)
+            if len(pair_rows) > 0:
+                pair_rows = torch.from_numpy(pair_rows).to(all_points.device, dtype=torch.long)
+                pair_cols = torch.from_numpy(pair_cols).to(all_points.device, dtype=torch.long)
+                curve_conn = torch.linalg.vector_norm(all_points[pair_rows] - all_points[pair_cols], dim=-1).mean()
                 loss = loss + opt.lambda_points_conn * curve_conn
          
         loss.backward()
