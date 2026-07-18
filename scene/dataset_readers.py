@@ -117,7 +117,7 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, depths_params, images_fold
             # image = ImageOps.invert(image)
         else:
             edge_path = image_path.replace('images', 'edge_PidiNet')
-            edge_path = edge_path.replace('.jpg', '.png')
+            edge_path = edge_path.replace('.jpg', '.png').replace('.JPG', '.png')
             image = Image.open(edge_path)
 
         image_name = extr.name.replace('.jpg', '.png')
