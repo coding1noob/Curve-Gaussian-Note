@@ -235,7 +235,10 @@ def readColmapSceneInfo(path, images, depths, eval, train_test_exp, llffhold=8, 
     except:
         points, rgb, _ = read_points3D_text(txt_path)
 
-  
+    if not os.path.exists(ply_path):
+        print(f"points3D.ply not found. Creating {ply_path} from COLMAP points3D.")
+        storePly(ply_path, points, rgb)
+
     try:
         pcd = fetchPly(ply_path)
     except:
