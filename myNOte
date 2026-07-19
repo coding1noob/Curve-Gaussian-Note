@@ -66,6 +66,7 @@ python train.py \
   --simple \
   --init_voxel_size 0.01
 
+export OMP_NUM_THREADS=8
 python edge_extraction/eval_replica.py \
   --dataset_dir ~/autodl-tmp/datasets/buaa1 \
   --base_dir output/buaa_net \

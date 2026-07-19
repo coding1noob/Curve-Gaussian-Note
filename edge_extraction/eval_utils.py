@@ -11,6 +11,7 @@ if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 from utils.vis_utils import get_fancy_color
 import torch
+from tqdm import tqdm
 
 import matplotlib.pyplot as plt
 
@@ -391,8 +392,9 @@ def get_pred_points_and_directions(
     all_curve_directions = []
     all_curve_colors = []
     # # -----------------------------------for Cubic Bezier-----------------------------------
+    curve_iter = tqdm(curves_ctl_pts, desc="Sampling Bezier curves", leave=False) if num_curves > 0 else curves_ctl_pts
     if num_curves > 0:
-        for i, each_curve in enumerate(curves_ctl_pts):
+        for i, each_curve in enumerate(curve_iter):
             each_curve = np.array(each_curve).reshape(4, 3)  # shape: (4, 3)
             sample_num = int(
                 bezier_curve_length(each_curve, num_samples=100) // sample_resolution
