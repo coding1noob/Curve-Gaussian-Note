@@ -258,6 +258,9 @@ def readColmapSceneInfo(path, images, depths, eval, train_test_exp, llffhold=8, 
         pcd = BasicPointCloud(points=points, colors=colors, normals=normals)
         print(f"Initial point cloud voxel downsample: {before_count} -> {points.shape[0]} points, voxel_size={init_voxel_size}")
 
+    if pcd is not None:
+        print(f"Final initial point cloud points: {pcd.points.shape[0]}")
+
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,

@@ -91,6 +91,8 @@ class Scene:
                                                            "iteration_" + str(self.loaded_iter),
                                                            "point_cloud.ply"), args.train_test_exp)
         else:
+            if scene_info.point_cloud is not None:
+                print(f"Initial point cloud points: {scene_info.point_cloud.points.shape[0]}")
             self.gaussians.create_from_pcd(scene_info.point_cloud, scene_info.train_cameras, self.cameras_extent)
 
     def save(self, iteration):

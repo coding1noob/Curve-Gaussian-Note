@@ -6,6 +6,7 @@ import json
 import cv2
 import copy
 import math
+from tqdm import tqdm
 from edge_extraction.extract_uitl import bezier_curve_length
 
 def load_from_json(filename: Path):
@@ -107,7 +108,8 @@ def process_geometry_data(
     all_points = []
 
     # Sample curves
-    for curve in curve_paras:
+    curve_iter = tqdm(curve_paras, desc="Extracting Bezier curves", leave=False) if len(curve_paras) > 0 else curve_paras
+    for curve in curve_iter:
         sample_num = int(
             bezier_curve_length(curve, num_samples=100) // sample_resolution
         )
@@ -120,7 +122,8 @@ def process_geometry_data(
         all_points.extend(points.tolist())
 
     # Sample lines
-    for line in lines:
+    line_iter = tqdm(lines, desc="Extracting line segments", leave=False) if len(lines) > 0 else lines
+    for line in line_iter:
         sample_num = int(np.linalg.norm(line[0] - line[1]) // sample_resolution)
         t = np.linspace(0, 1, sample_num)
         line_points = np.outer(t, line[1] - line[0]) + line[0]
