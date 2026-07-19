@@ -58,7 +58,7 @@ python train.py -s ~/autodl-tmp/datasets/buaa1 -m output/buaa_net --quiet --eval
 
 export OMP_NUM_THREADS=8
 python train.py \
-  -s ~/autodl-tmp/datasets/buaa1 \
+  -s ~/autodl-tmp/datasets/buaa_net \
   -m output/buaa_net \
   --quiet --eval \
   --iterations 5000 \
@@ -68,9 +68,37 @@ python train.py \
 
 export OMP_NUM_THREADS=8
 python edge_extraction/eval_replica.py \
-  --dataset_dir ~/autodl-tmp/datasets/buaa1 \
-  --base_dir output/buaa_net \
-  --sample_resolution 0.002
+--dataset_dir ~/autodl-tmp/datasets/buaa_net \
+--base_dir output/buaa_net \
+--sample_resolution 0.002
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

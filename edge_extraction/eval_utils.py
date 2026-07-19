@@ -392,7 +392,7 @@ def get_pred_points_and_directions(
     all_curve_directions = []
     all_curve_colors = []
     # # -----------------------------------for Cubic Bezier-----------------------------------
-    curve_iter = tqdm(curves_ctl_pts, desc="Sampling Bezier curves", leave=False) if num_curves > 0 else curves_ctl_pts
+    curve_iter = tqdm(curves_ctl_pts, desc="Sampling Bezier curves", leave=True) if num_curves > 0 else curves_ctl_pts
     if num_curves > 0:
         for i, each_curve in enumerate(curve_iter):
             each_curve = np.array(each_curve).reshape(4, 3)  # shape: (4, 3)
@@ -467,8 +467,9 @@ def get_pred_points_and_directions(
     all_line_directions = []
     all_line_colors = []
     # # -------------------------------------for Line-----------------------------------------
+    line_iter = tqdm(lines_end_pts, desc="Sampling line segments", leave=True) if num_lines > 0 else lines_end_pts
     if num_lines > 0:
-        for i, each_line in enumerate(lines_end_pts):
+        for i, each_line in enumerate(line_iter):
             each_line = np.array(each_line).reshape(2, 3)  # shape: (2, 3)
             sample_num = int(
                 np.linalg.norm(each_line[0] - each_line[-1]) // sample_resolution
