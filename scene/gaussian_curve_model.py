@@ -23,13 +23,15 @@ try:
 except:
     pass
 
-
+# 曲线怎么初始化
 def initialize_bezier_curves(points, bound, n_control_points=4):
     """
     given a set of points, each point inits a curve
     B(t)=(1−t)^3P0+3(1−t)^2tP1+3(1−t)t^2P2+t^3P3
     """
-    # start/end points
+    # 用输入点云中的每个点初始化一条三次 Bezier 曲线。
+    # 这里不是直接初始化一个高斯点，而是先为每个点构造 4 个控制点 P0/P1/P2/P3。
+    # 后面会沿这条曲线采样 self.n_gaussians 个细长高斯椭球。
     assert n_control_points == 4
     # P0 = points - bound.repeat(1, 3)
     # P3 = points + bound.repeat(1, 3)
@@ -55,6 +57,9 @@ class GaussianCurveModel(GaussianModel):
     def __init__(self, sh_degree, n_gaussians=12, optimizer_type="default"):
         super().__init__(sh_degree, n_gaussians=12, optimizer_type=optimizer_type)
         self.n_gaussians = n_gaussians
+        # 每条曲线上采样 n_gaussians 个位置。
+        # 例如 n_gaussians=12 时，一条 Bezier 曲线会变成 12 个可渲染的高斯椭球。
+        # 显存大致会随“曲线数量 × n_gaussians”增长。
         t = torch.linspace(0.5 / (self.n_gaussians), 1 - 0.5 / (self.n_gaussians), self.n_gaussians,
                            device='cuda')
         self.sample_t = t[:, None, None]
@@ -67,7 +72,11 @@ class GaussianCurveModel(GaussianModel):
     def get_curve_points(self):
         return self._curve_points
 
+    # 怎么沿曲线采样成多个高斯。根据曲线控制点和采样位置 t，计算每条曲线上 n_gaussians 个采样点
     def get_curve_gaussians(self, t):
+        # 按三次 Bezier 公式在每条曲线上采样 3D 点。
+        # 输入 t 的形状通常是 [n_gaussians, 1, 1]，输出形状是 [n_gaussians, n_curves, 3]。
+        # 这些采样点之后会被展平成 pc.get_xyz，作为 rasterizer 真正渲染的高斯椭球中心。
         bezier_sample_points = (1 - t) ** 3 * self._curve_points[:, 0, :] + \
             3 * (1 - t) ** 2 * t * self._curve_points[:, 1, :] \
             + 3 * (1 - t) * t ** 2 * self._curve_points[:, 2, :] + t ** 3 * self._curve_points[:, 3, :]
@@ -161,7 +170,9 @@ class GaussianCurveModel(GaussianModel):
         features[:, :, :1, 0] = fused_color
         features[:, :, 1:, 1:] = 0.0
 
+        # 贝塞尔曲线的控制点是可优化的参数，初始化为 points_per_curve，并设置 requires_grad 为 True。
         self._curve_points = nn.Parameter(points_per_curve.requires_grad_(True))
+        
         sum_n_gaussians = self._curve_points.shape[0] * self.n_gaussians
         self._features_dc = nn.Parameter(features[:, :, :, 0:1].transpose(2, 3).contiguous().requires_grad_(True))
         self._features_rest = nn.Parameter(features[:, :, :, 1:].transpose(2, 3).contiguous().requires_grad_(True))
@@ -178,6 +189,8 @@ class GaussianCurveModel(GaussianModel):
         self.prepare_scaling_rot()
 
     def prepare_scaling_rot(self, eps=1e-8):
+        # 把每条曲线采样成 n_gaussians 个高斯椭球，并根据曲线切线设置椭球朝向。
+        # _xyz 是每个高斯的中心；_rotation 决定“细长方向”沿着曲线切线；_scaling 决定长短轴。
         _xyz = self.get_curve_gaussians(self.sample_t)
         _xyz_front = self.get_curve_gaussians(self.sample_t-0.5/(self.n_gaussians))
         dist = torch.norm(_xyz -_xyz_front, dim=-1)
@@ -193,8 +206,8 @@ class GaussianCurveModel(GaussianModel):
         rotation = torch.stack((v0, v1, v2), dim=1)
         rotation = rotation.transpose(-2, -1)
         self._rotation = rot_to_quat_batch(rotation)
-        s0 = rearrange(dist, 'm b ->(b m)')
-        s1 = rearrange(self.get_curve_width.repeat(1, self.n_gaussians), 'b m ->(b m)')
+        s0 = rearrange(dist, 'm b ->(b m)')                 # 长轴，来自相邻采样点距离 dist
+        s1 = rearrange(self.get_curve_width.repeat(1, self.n_gaussians), 'b m ->(b m)')     # 短轴，来自曲线宽度 get_curve_width
         self._scaling = torch.stack((s0, s1, s1), dim=1)
 
     def training_setup(self, training_args):
@@ -460,7 +473,8 @@ class GaussianCurveModel(GaussianModel):
                      ransac_thresh=0.005):
         # connect start/end conncet
         with torch.no_grad():
-            # bezier curve merger
+            # 我改的地方：曲线合并不再构造全量两两比较矩阵。
+            # 先用稀疏半径查询找到相近端点，再只对这些候选对计算方向相似度。
             t = torch.linspace(0, 1, sample_num, device='cuda')
             t = t[:, None, None]
             curve_sample_points = rearrange(self.get_curve_gaussians(t), 'm b c -> b m c')
@@ -487,8 +501,7 @@ class GaussianCurveModel(GaussianModel):
                 all_tangs = np.concatenate([start_tangs, end_tangs], axis=0)
                 all_tangs = all_tangs / np.clip(np.linalg.norm(all_tangs, axis=-1, keepdims=True), 1e-6, None)
 
-                # Changed: only compare endpoint pairs found by a sparse radius query,
-                # instead of allocating dense [2N, 2N, 3] and [2N, 2N] tensors on GPU.
+                # 我改的地方：避免在 GPU 上生成 [2N, 2N, 3] / [2N, 2N] 这种巨大张量。
                 endpoint_pairs = query_radius_pairs(all_points, 2 * distance_threshold)
                 if endpoint_pairs.size > 0:
                     endpoint_curve_ids = np.concatenate([
@@ -585,8 +598,8 @@ class GaussianCurveModel(GaussianModel):
                 line_segments = rearrange(self._curve_points[line_idx][:, [0,-1], :],
                                           'b m c -> b (m c)').cpu().numpy()
 
-                # Changed: use sparse sampled-point neighbors for line components
-                # so large line sets do not build dense pairwise CPU matrices either.
+                # 我改的地方：线段合并也改成采样点稀疏近邻图。
+                # 这里不再构造 CPU 上的全量两两距离/相似度矩阵。
                 labels = find_connected_line_components(
                     line_segments,
                     distance_threshold,
@@ -665,8 +678,13 @@ class GaussianCurveModel(GaussianModel):
 
 
     @torch.no_grad()
-    def draw_ellipsoids(self, path, step, radius=1.2):
+    def draw_ellipsoids(self, path, step, radius=1.2, max_ellipsoids=20000):
         xyzs = (self.get_xyz)  # [gs_num, 3]
+        # 我改的地方：大场景直接跳过椭球 mesh 导出。
+        # 否则会为上百万个 Gaussian 逐个创建 Open3D mesh，耗时且容易写盘失败。
+        if len(xyzs) > max_ellipsoids:
+            print(f"Skip ellipsoid mesh export: {len(xyzs)} gaussians exceeds limit {max_ellipsoids}.")
+            return
         rotations = (self.get_rotation)  # [gs_num, 4]
         scales = (self.get_scaling)  # [gs_num, 3]
         features = (self.get_features)  # [gs_num, 3, 16]
@@ -739,13 +757,18 @@ class GaussianCurveModel(GaussianModel):
         for mesh in meshes:
             combined_mesh += mesh
         output_path = f"{path}/ellipsoids_step{step}.ply"
-        o3d.io.write_triangle_mesh(output_path, combined_mesh)
+        # 我改的地方：这里改用二进制 PLY，避免 ASCII PLY 写超大文件又慢又容易失败。
+        o3d.io.write_triangle_mesh(output_path, combined_mesh, write_ascii=False)
         print(f"Saved mesh to {output_path}")
 
 
     @torch.no_grad()
-    def draw_curve(self, path, step, num_sample=200):
+    def draw_curve(self, path, step, num_sample=200, max_points=5000000):
         n_curves = self.get_curve_points.shape[0]
+        if n_curves * num_sample > max_points:
+            # 我改的地方：限制曲线可视化导出的总点数，避免一次写出几千万个点。
+            num_sample = max(2, max_points // max(n_curves, 1))
+            print(f"Reduce curve visualization samples to {num_sample} per curve.")
         colors = get_fancy_color(n_curves+1)
         colors = colors[torch.randperm(n_curves)]
         colors = colors[:, None, :].repeat(1, num_sample, 1).view(-1, 3)
@@ -758,4 +781,5 @@ class GaussianCurveModel(GaussianModel):
         pcd.points = o3d.utility.Vector3dVector(sampled_points.cpu().numpy())
         pcd.colors = o3d.utility.Vector3dVector(colors.cpu().numpy())
         output_path = f"{path}/curve_step{step}.ply"
-        o3d.io.write_point_cloud(output_path, pcd, write_ascii=True)
+        # 我改的地方：曲线点云改用二进制 PLY，避免 ASCII 写超大点云时 RPly 报错。
+        o3d.io.write_point_cloud(output_path, pcd, write_ascii=False)

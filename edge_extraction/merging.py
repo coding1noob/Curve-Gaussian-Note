@@ -47,8 +47,8 @@ def merge_endpoints(merged_line_segments, merged_bezier_curves, distance_thresho
 
     concat_endpoints = np.concatenate([line_endpoints, curve_endpoints], axis=0)
 
-    # Changed: replace dense all-pairs cdist with a sparse radius graph so endpoint
-    # merging still works on large scenes without allocating O(N^2) host memory.
+    # 我改的地方：端点合并不再使用 cdist 构造全量两两距离矩阵。
+    # 改成稀疏半径图后，大场景不会再分配 O(N^2) 的内存。
     endpoint_pairs = query_radius_pairs(concat_endpoints, distance_threshold)
     adjacency_matrix = _pairs_to_sparse_graph(len(concat_endpoints), endpoint_pairs)
     num_components, labels = connected_components(adjacency_matrix, directed=False)
@@ -145,8 +145,8 @@ def find_connected_line_components(line_segments, distance_threshold, similarity
     direction_norms = np.linalg.norm(directions, axis=1, keepdims=True)
     directions = directions / np.clip(direction_norms, 1e-8, None)
 
-    # Changed: sample a few points per segment and build a sparse neighborhood graph
-    # instead of materializing dense pairwise distance/similarity matrices for all lines.
+    # 我改的地方：线段合并只对采样点建立稀疏近邻图。
+    # 替代原来的全量线段距离矩阵和全量方向相似度矩阵。
     t_values = np.linspace(0.0, 1.0, samples_per_line, dtype=np.float32)
     sampled_points = (
         (1.0 - t_values[None, :, None]) * line_segments[:, None, :3]

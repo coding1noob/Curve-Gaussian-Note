@@ -107,7 +107,9 @@ class GaussianModel:
 
     @property
     def get_scaling(self):
+        # 长轴尺度
         first_column = self.scaling_activation(self._scaling[:, 0]).unsqueeze(1)
+        # 短轴尺度
         second_column = torch.full((self._scaling.shape[0], 1), 5e-3, device=self._scaling.device)
         scaling_result = torch.cat((first_column+2e-2, second_column, second_column), dim=1)
         return scaling_result

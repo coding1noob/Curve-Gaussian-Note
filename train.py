@@ -39,6 +39,8 @@ except:
 
 
 def _find_sparse_curve_endpoint_pairs(curve_points, distance_threshold):
+    # 我改的地方：这里只收集距离足够近的端点对，用于端点连接 loss。
+    # 替代原来直接构造 2N x 2N 全量距离矩阵的写法，避免显存/内存爆炸。
     start_points = curve_points[:, 0].detach().cpu().numpy()
     end_points = curve_points[:, -1].detach().cpu().numpy()
     all_points = np.concatenate([start_points, end_points], axis=0)
@@ -61,12 +63,13 @@ def _find_sparse_curve_endpoint_pairs(curve_points, distance_threshold):
     cols = sparse_dist.col[valid].astype(np.int64, copy=False)
     return rows, cols
 
-def training(dataset, opt, pipe, testing_iterations, saving_iterations, 
+def training(dataset, opt, pipe, testing_iterations, saving_iterations,
              checkpoint_iterations, checkpoint, debug_from):
 
     if not SPARSE_ADAM_AVAILABLE and opt.optimizer_type == "sparse_adam":
         sys.exit(f"Trying to use sparse adam but it is not installed, please install the correct rasterizer using pip install [3dgs_accel].")
 
+    # 1. 初始化训练对象：创建输出、曲线高斯模型、场景、优化器，并可选恢复 checkpoint。
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
     gaussians = GaussianCurveModel(dataset.sh_degree, dataset.n_gaussians, opt.optimizer_type)
@@ -98,7 +101,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
     reset_timestep = 0
+
     for iteration in range(first_iter, opt.iterations + 1):
+        # 2. 每轮训练前调度：更新学习率、提升 SH 阶数，并随机选一个训练视角。
         reset_timestep += 1
         iter_start.record()
         gaussians.update_learning_rate(iteration)
@@ -118,13 +123,18 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
         if (iteration - 1) == debug_from:
             pipe.debug = True
 
+        # 3. 渲染当前 3D 曲线高斯：得到这一视角下的 2D 线条外观 image。
         render_pkg = render(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=dataset.train_test_exp,
                             separate_sh=SPARSE_ADAM_AVAILABLE,
                             use_mask=iteration>=opt.densify_until_iter, mask_thr=opt.mask_threshold)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], \
             render_pkg["visibility_filter"], render_pkg["radii"]
+
+        # 4. 图像监督 Loss：这里是把渲染出的线条外观和输入边缘图比较。
+        # 如果数据集使用的是 PidiNet / DexiNed 边缘图，这里就是直接监督信号。
         gt_image = viewpoint_cam.original_image.cuda()
         Ll1 = edge_aware_loss(image, gt_image[:1, ...])
+        
         if FUSED_SSIM_AVAILABLE:
             ssim_value = fused_ssim(image.unsqueeze(0), gt_image[:1, ...].unsqueeze(0))
         else:
@@ -132,7 +142,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
 
         loss = opt.lambda_mse * ((1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value))
 
-        #regularization
+        # 5. 正则项：约束 mask、opacity、曲线平滑度、宽度和端点连接关系。
         if iteration>=opt.densify_until_iter:
             loss = loss + opt.lambda_mask * torch.mean((torch.sigmoid(gaussians._mask)))
 
@@ -162,15 +172,16 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
             all_points = torch.cat([start_points, end_points], dim=0)
             dis_thr = 0.05
             curve_conn = torch.tensor(0.0, device=all_points.device)
-            # Changed: pick nearby endpoint pairs with a CPU KD-tree and only evaluate
-            # those distances on GPU, instead of building a dense 2N x 2N cdist matrix.
+            # 我改的地方：先用 CPU KD-tree 找近邻端点对，再只在 GPU 上计算这些候选对的距离。
+            # 这样不再构造 2N x 2N 的 torch.cdist 全量矩阵。
             pair_rows, pair_cols = _find_sparse_curve_endpoint_pairs(curve_points, dis_thr)
             if len(pair_rows) > 0:
                 pair_rows = torch.from_numpy(pair_rows).to(all_points.device, dtype=torch.long)
                 pair_cols = torch.from_numpy(pair_cols).to(all_points.device, dtype=torch.long)
                 curve_conn = torch.linalg.vector_norm(all_points[pair_rows] - all_points[pair_cols], dim=-1).mean()
                 loss = loss + opt.lambda_points_conn * curve_conn
-         
+
+        # 6. 反向传播：根据边缘图监督和正则项更新曲线高斯参数。
         loss.backward()
         iter_end.record()
 
@@ -206,7 +217,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
                             (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp),
                             dataset.train_test_exp)
 
-            # Densification
+            # 7. 结构调整：增密、剪枝、切分曲线，并把足够直的曲线转成显式线段结构。
             if iteration < opt.densify_until_iter:
                 # Keep track of max radii in image-space for pruning
                 gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
@@ -236,7 +247,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
                 gaussians.fit_curve_to_line(opt.threshold_line, opt.threshold_max_line)
                 gaussians.merge_curves(opt.distance_threshold, opt.similarity_threshold)
 
-            if (iteration in saving_iterations):
+            if (iteration in saving_iterations) and not dataset.simple:
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
                 gaussians.draw_curve(os.path.join(scene.model_path,
@@ -245,7 +256,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
                 gaussians.draw_ellipsoids(os.path.join(scene.model_path,
                                                            "point_cloud/iteration_{}".format(iteration)), iteration)
 
-            if (iteration in saving_iterations):
+            if (iteration in saving_iterations) and not dataset.simple:
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
 
@@ -261,19 +272,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
                     gaussians.optimizer.step()
                     gaussians.optimizer.zero_grad(set_to_none = True)
 
-            if (iteration in checkpoint_iterations):
+            if (iteration in checkpoint_iterations) and not dataset.simple:
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
 
         if hasattr(gaussians, 'prepare_scaling_rot'):
             gaussians.prepare_scaling_rot()
     
+    # 8. 最终导出：从训练好的曲线/线段参数中提取 parametric edge 结果。
+    extract_curves(gaussians, opt, scene, simple=dataset.simple)
 
-
-
-    extract_curves(gaussians, opt, scene)
-
-def extract_curves(gaussians, opt, scene):
+def extract_curves(gaussians, opt, scene, simple=False):
      # meger_points:
     merged_bezier_curves = gaussians.get_curve_points[gaussians.is_bezier]
     merged_line_segments = gaussians.get_curve_points[~gaussians.is_bezier][:,[0,-1],:]
@@ -304,11 +313,13 @@ def extract_curves(gaussians, opt, scene):
     edge_pcd.points = o3d.utility.Vector3dVector(pred_edge_points)
 
     edge_ply_file_path = os.path.join(scene.model_path, "edge_points.ply")
-    try:
-        o3d.io.write_point_cloud(edge_ply_file_path, edge_pcd, write_ascii=True)
-        print(f"Saved {edge_ply_file_path} for edge points visualization.")
-    except IOError as e:
-        print(f"Failed to save {edge_ply_file_path}: {e}")
+    if not simple:
+        try:
+            # 我改的地方：最终 edge_points.ply 也改成二进制 PLY，避免 ASCII 写超大文件失败。
+            o3d.io.write_point_cloud(edge_ply_file_path, edge_pcd, write_ascii=False)
+            print(f"Saved {edge_ply_file_path} for edge points visualization.")
+        except IOError as e:
+            print(f"Failed to save {edge_ply_file_path}: {e}")
 
     json_file_path = os.path.join(scene.model_path, "parametric_edges.json")
     try:
@@ -333,13 +344,16 @@ def prepare_output_and_logger(args):
     # Set up output folder
     print("Output folder: {}".format(args.model_path))
     os.makedirs(args.model_path, exist_ok = True)
-    with open(os.path.join(args.model_path, "cfg_args"), 'w') as cfg_log_f:
-        cfg_log_f.write(str(Namespace(**vars(args))))
+    if not args.simple:
+        with open(os.path.join(args.model_path, "cfg_args"), 'w') as cfg_log_f:
+            cfg_log_f.write(str(Namespace(**vars(args))))
 
     # Create Tensorboard writer
     tb_writer = None
-    if TENSORBOARD_FOUND:
+    if TENSORBOARD_FOUND and not args.simple:
         tb_writer = SummaryWriter(args.model_path)
+    elif args.simple:
+        print("Simple mode: only writing parametric_edges.json")
     else:
         print("Tensorboard not available: not logging progress")
     return tb_writer

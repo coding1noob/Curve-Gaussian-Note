@@ -51,6 +51,7 @@ class ModelParams(ParamGroup):
         self._source_path = ""
         self.detector = 'PidiNet'           #'DexiNed' or  'PidiNet'
         self._model_path = ""
+        self.simple = False
         self._images = "images"
         self._depths = ""
         self._resolution = -1
