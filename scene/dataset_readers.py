@@ -163,7 +163,8 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
-def readColmapSceneInfo(path, images, depths, eval, train_test_exp, llffhold=8, detector='DexiNed'):
+def readColmapSceneInfo(path, images, depths, eval, train_test_exp, llffhold=8, detector='DexiNed',
+                        init_voxel_size=0.0):
     try:
         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
@@ -239,6 +240,23 @@ def readColmapSceneInfo(path, images, depths, eval, train_test_exp, llffhold=8, 
         pcd = fetchPly(ply_path)
     except:
         pcd = None
+
+    if pcd is not None and init_voxel_size > 0:
+        # 可选的初始点云体素降采样：COLMAP 每个点会初始化一条曲线，点太多会直接导致显存暴涨。
+        # init_voxel_size 越大，保留下来的点越少；0 表示不降采样，保持原始行为。
+        before_count = pcd.points.shape[0]
+        point_cloud = o3d.geometry.PointCloud()
+        point_cloud.points = o3d.utility.Vector3dVector(pcd.points)
+        point_cloud.colors = o3d.utility.Vector3dVector(pcd.colors)
+        point_cloud.normals = o3d.utility.Vector3dVector(pcd.normals)
+        downsampled_cloud = point_cloud.voxel_down_sample(init_voxel_size)
+        points = np.asarray(downsampled_cloud.points)
+        colors = np.asarray(downsampled_cloud.colors)
+        normals = np.asarray(downsampled_cloud.normals)
+        if normals.shape[0] != points.shape[0]:
+            normals = np.zeros_like(points)
+        pcd = BasicPointCloud(points=points, colors=colors, normals=normals)
+        print(f"Initial point cloud voxel downsample: {before_count} -> {points.shape[0]} points, voxel_size={init_voxel_size}")
 
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,

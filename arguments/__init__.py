@@ -52,6 +52,7 @@ class ModelParams(ParamGroup):
         self.detector = 'PidiNet'           #'DexiNed' or  'PidiNet'
         self._model_path = ""
         self.simple = False
+        self.init_voxel_size = 0.0
         self._images = "images"
         self._depths = ""
         self._resolution = -1

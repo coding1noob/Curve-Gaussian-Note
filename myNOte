@@ -50,10 +50,10 @@ python train.py -s ~/autodl-tmp/datasets/Replica_Edge/room1 -m output/replica/ro
 python edge_extraction/eval_replica.py --dataset_dir ~/autodl-tmp/datasets/Replica_Edge --base_dir output/replica
 
 爆显存：
-PYTORCH_ALLOC_CONF=expandable_segments:True python train.py -s ~/autodl-tmp/datasets/buaa1 -m output/buaa1 --quiet --eval --iteration 1000
+PYTORCH_ALLOC_CONF=expandable_segments:True python train.py -s ~/autodl-tmp/datasets/buaa1 -m output/buaa1 --quiet --eval --iterations 1000
 
 尝试小数据集：
-python train.py -s ~/autodl-tmp/datasets/buaa1 -m output/buaa_net --quiet --eval --iteration 5000 --n_gaussians 6 --simple
+python train.py -s ~/autodl-tmp/datasets/buaa1 -m output/buaa_net --quiet --eval --iterations 5000 --n_gaussians 4 --simple
 
 
 
