@@ -102,18 +102,28 @@ def process_scan(
     base_dir,
     exp_name,
     dataset_dir,
+    sample_resolution,
 ):
-    print(f"Processing: {scan_name}")
-    json_path = os.path.join(
-        base_dir, scan_name, "parametric_edges.json"
-    )
+    single_scene = scan_name is None
+    display_name = Path(dataset_dir).name if single_scene else scan_name
+    print(f"Processing: {display_name}")
+
+    if single_scene:
+        json_path = os.path.join(base_dir, "parametric_edges.json")
+        scene_data = dataset_dir
+        output_dir = base_dir
+    else:
+        json_path = os.path.join(base_dir, scan_name, "parametric_edges.json")
+        scene_data = os.path.join(dataset_dir, scan_name)
+        output_dir = os.path.join(base_dir, scan_name)
+
     if not os.path.exists(json_path):
-        print(f"Invalid prediction at {scan_name}")
+        print(f"Invalid prediction at {display_name}: {json_path}")
         return
 
     all_curve_points, all_line_points, all_curve_directions, \
         all_line_directions, all_curve_colors, all_line_colors, \
-        num_curves, num_lines = get_pred_points_and_directions(json_path, sample_resolution=0.0005)
+        num_curves, num_lines = get_pred_points_and_directions(json_path, sample_resolution=sample_resolution)
 
     all_points = (
         np.concatenate([all_curve_points, all_line_points], axis=0)
@@ -131,7 +141,6 @@ def process_scan(
         .astype(np.float32)
     )
 
-    scene_data = os.path.join(dataset_dir, scan_name)
     cameras_extrinsic_file = os.path.join(scene_data, "sparse/0", "images.bin")
     cameras_intrinsic_file = os.path.join(scene_data, "sparse/0", "cameras.bin")
     cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
@@ -200,23 +209,27 @@ def process_scan(
             # Save the visualization
             plt.axis('off')
        
-            os.makedirs(os.path.join(base_dir, scan_name, 'novel_view'), exist_ok=True)
-            plt.savefig(os.path.join(base_dir, scan_name, 'novel_view', image.name), 
+            os.makedirs(os.path.join(output_dir, 'novel_view'), exist_ok=True)
+            plt.savefig(os.path.join(output_dir, 'novel_view', image.name),
                        bbox_inches='tight', dpi=300)
             plt.close()
 
     # Create video from projected and original images
-    projected_dir = os.path.join(base_dir, scan_name, 'novel_view')
-    original_dir = os.path.join(dataset_dir, scan_name, 'color')
-    output_video = os.path.join(base_dir, scan_name, f'{scan_name}_comparison.mp4')
+    projected_dir = os.path.join(output_dir, 'novel_view')
+    original_dir = os.path.join(scene_data, 'color')
+    output_video = os.path.join(output_dir, f'{display_name}_comparison.mp4')
     create_video_from_images(projected_dir, original_dir, output_video)
 
 
 
 def main(args):
     set_random_seeds()
-    with open("edge_extraction/Replica_scans.txt", "r") as f:
-        scan_names = [line.strip() for line in f]
+    scans_file = "edge_extraction/Replica_scans.txt"
+    if os.path.exists(scans_file):
+        with open(scans_file, "r") as f:
+            scan_names = [line.strip() for line in f if line.strip()]
+    else:
+        scan_names = [None]
 
     for scan_name in scan_names:
         process_scan(
@@ -224,6 +237,7 @@ def main(args):
             args.base_dir,
             args.exp_name,
             args.dataset_dir,
+            args.sample_resolution,
         )
 
 
@@ -245,6 +259,7 @@ if __name__ == "__main__":
         help="Directory for the dataset",
     )
     parser.add_argument("--exp_name", type=str, default="exp002", help="Experiment name")
+    parser.add_argument("--sample_resolution", type=float, default=0.0005)
     parser.add_argument("--downsample_density", type=float, default=0.5)
     parser.add_argument("--threshold", type=float, default=5)
     args = parser.parse_args()

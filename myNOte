@@ -56,7 +56,7 @@ PYTORCH_ALLOC_CONF=expandable_segments:True python train.py -s ~/autodl-tmp/data
 export OMP_NUM_THREADS=8
 python train.py -s ~/autodl-tmp/datasets/buaa1 -m output/buaa_net --quiet --eval --iterations 5000 --n_gaussians 4 --simple --init_voxel_size 0.05
 
-
+export OMP_NUM_THREADS=8
 python train.py \
   -s ~/autodl-tmp/datasets/buaa1 \
   -m output/buaa_net \
@@ -66,6 +66,10 @@ python train.py \
   --simple \
   --init_voxel_size 0.01
 
+python edge_extraction/eval_replica.py \
+  --dataset_dir ~/autodl-tmp/datasets/buaa1 \
+  --base_dir output/buaa_net \
+  --sample_resolution 0.002
 
 
 
