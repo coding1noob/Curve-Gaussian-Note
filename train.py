@@ -307,13 +307,19 @@ def extract_curves(gaussians, opt, scene, simple=False):
             merged_bezier_curves.tolist() if len(merged_bezier_curves) > 0 else []
         ),
     }
-    from edge_extraction.extract_para_edge import get_parametric_edge
-    pred_edge_points, return_edge_dict = get_parametric_edge(opt.visible_checking, merged_edge_dict)
-    edge_pcd = o3d.geometry.PointCloud()
-    edge_pcd.points = o3d.utility.Vector3dVector(pred_edge_points)
+    if simple:
+        # simple 模式只需要给 eval_replica.py 用的参数化边缘 JSON。
+        # 不再调用 get_parametric_edge() 对每条 Bezier/线段重新采样，否则大场景会在训练结束后卡很久。
+        return_edge_dict = merged_edge_dict
+    else:
+        from edge_extraction.extract_para_edge import get_parametric_edge
+        # get_parametric_edge 把训练得到的“参数化边缘”（Bezier 曲线 + 直线段）
+        # 整理成最终可导出的边缘点云，并在需要时做可见性筛选
+        pred_edge_points, return_edge_dict = get_parametric_edge(opt.visible_checking, merged_edge_dict)
+        edge_pcd = o3d.geometry.PointCloud()
+        edge_pcd.points = o3d.utility.Vector3dVector(pred_edge_points)
 
-    edge_ply_file_path = os.path.join(scene.model_path, "edge_points.ply")
-    if not simple:
+        edge_ply_file_path = os.path.join(scene.model_path, "edge_points.ply")
         try:
             # 我改的地方：最终 edge_points.ply 也改成二进制 PLY，避免 ASCII 写超大文件失败。
             o3d.io.write_point_cloud(edge_ply_file_path, edge_pcd, write_ascii=False)

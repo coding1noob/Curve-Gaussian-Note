@@ -54,7 +54,7 @@ PYTORCH_ALLOC_CONF=expandable_segments:True python train.py -s ~/autodl-tmp/data
 
 尝试小数据集：
 export OMP_NUM_THREADS=8
-python train.py -s ~/autodl-tmp/datasets/buaa1 -m output/buaa_net --quiet --eval --iterations 5000 --n_gaussians 4 --simple --init_voxel_size 0.01
+python train.py -s ~/autodl-tmp/datasets/buaa1 -m output/buaa_net --quiet --eval --iterations 5000 --n_gaussians 4 --simple --init_voxel_size 0.05
 
 
 python train.py \
