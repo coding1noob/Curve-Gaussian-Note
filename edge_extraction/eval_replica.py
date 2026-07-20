@@ -121,6 +121,7 @@ def process_scan(
         print(f"Invalid prediction at {display_name}: {json_path}")
         return
 
+    # 读取json，将里面 Bezier 曲线和线段 采样成点，得到其坐标、方向和颜色，用于后续画图
     all_curve_points, all_line_points, all_curve_directions, \
         all_line_directions, all_curve_colors, all_line_colors, \
         num_curves, num_lines = get_pred_points_and_directions(json_path, sample_resolution=sample_resolution)
@@ -147,7 +148,9 @@ def process_scan(
     cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
 
     # Project points onto each camera view and visualize
-    for image_id, image in cam_extrinsics.items():
+    # 相机循环
+    cam_iter = tqdm(cam_extrinsics.items(), desc="Processing camera views", leave=False) if len(cam_extrinsics) > 0 else cam_extrinsics.items()
+    for image_id, image in cam_iter:
         # Get camera parameters
         camera_id = image.camera_id
         camera = cam_intrinsics[camera_id]

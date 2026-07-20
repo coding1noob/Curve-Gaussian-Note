@@ -170,20 +170,27 @@ class GaussianCurveModel(GaussianModel):
         features[:, :, :1, 0] = fused_color
         features[:, :, 1:, 1:] = 0.0
 
-        # 贝塞尔曲线的控制点是可优化的参数，初始化为 points_per_curve，并设置 requires_grad 为 True。
-        self._curve_points = nn.Parameter(points_per_curve.requires_grad_(True))
+        # nn.Parameter 是 PyTorch 中用于定义可训练参数的类，它会自动将参数注册到模型中，并在优化器中进行更新。
         
+        # 贝塞尔曲线的控制点是可优化的参数，初始化为 points_per_curve，并设置 requires_grad 为 True
+        self._curve_points = nn.Parameter(points_per_curve.requires_grad_(True))
+        # 高斯总数即为曲线数量乘以每条曲线的高斯数量
         sum_n_gaussians = self._curve_points.shape[0] * self.n_gaussians
+        # 控制高斯的基础颜色 和 高阶分量，但是之后在 gaussian_renderer/init.py 强制颜色设为全1
         self._features_dc = nn.Parameter(features[:, :, :, 0:1].transpose(2, 3).contiguous().requires_grad_(True))
         self._features_rest = nn.Parameter(features[:, :, :, 1:].transpose(2, 3).contiguous().requires_grad_(True))
+        # 透明度。一条曲线一个 opacity, 然后这条曲线上的所有采样高斯共享同一个 opacity
         self._opacity = nn.Parameter(opacities.requires_grad_(True))
+        # 曲线宽度，用于控制高斯椭球的短轴长度，初始化为 5e-3，并设置 requires_grad 为 True
         self._width = nn.Parameter(widths.requires_grad_(True))
+        # 控制每条曲线上的每个采样高斯是否保留/参与渲染
         self._mask = nn.Parameter(torch.ones((fused_point_cloud.shape[0], self.n_gaussians, 1), device="cuda")
                                   .requires_grad_(True))
         self.max_radii2D = torch.zeros(sum_n_gaussians, device="cuda")
         self.is_bezier = torch.ones(self._curve_points.shape[0], dtype=torch.bool, device='cuda')
         self.exposure_mapping = {cam_info.image_name: idx for idx, cam_info in enumerate(cam_infos)}
         self.pretrained_exposures = None
+        # 每个相机视角的曝光/颜色校正参数
         exposure = torch.eye(3, 4, device="cuda")[None].repeat(len(cam_infos), 1, 1)
         self._exposure = nn.Parameter(exposure.requires_grad_(True))
         self.prepare_scaling_rot()
@@ -213,6 +220,8 @@ class GaussianCurveModel(GaussianModel):
     def training_setup(self, training_args):
             self.denom = torch.zeros((self.get_curve_points.shape[0]*self.n_gaussians, 1), device="cuda")
             self.xyz_gradient_accum = torch.zeros((self.get_curve_points.shape[0]*self.n_gaussians, 1), device="cuda")
+            # optimizer_type 决定使用哪种优化器，默认是 Adam，也可以选择 SparseGaussianAdam
+            # 基础颜色，高阶颜色，整体不透明度，曲线宽度，曲线控制点，参与渲染的mask 等参数的学习率
             l = [
                 {'params': [self._features_dc], 'lr': training_args.feature_lr, "name": "f_dc"},
                 {'params': [self._features_rest], 'lr': training_args.feature_lr / 20.0, "name": "f_rest"},
@@ -231,6 +240,7 @@ class GaussianCurveModel(GaussianModel):
                     # A special version of the rasterizer is required to enable sparse adam
                     self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
 
+            # 每个相机视角曝光的优化器
             self.exposure_optimizer = torch.optim.Adam([self._exposure])
 
             self.curve_scheduler_args = get_expon_lr_func(lr_init=training_args.lr_curve_points_init,
