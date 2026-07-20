@@ -163,6 +163,7 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
+# 读取colmap总入口，返回SceneInfo对象
 def readColmapSceneInfo(path, images, depths, eval, train_test_exp, llffhold=8, detector='DexiNed',
                         init_voxel_size=0.0):
     try:
@@ -213,6 +214,7 @@ def readColmapSceneInfo(path, images, depths, eval, train_test_exp, llffhold=8, 
         test_cam_names_list = []
 
     reading_dir = "images" if images == None else images
+    # 相机读取部分
     cam_infos_unsorted = readColmapCameras(
         cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, depths_params=depths_params,
         images_folder=os.path.join(path, reading_dir), 
@@ -237,9 +239,11 @@ def readColmapSceneInfo(path, images, depths, eval, train_test_exp, llffhold=8, 
 
     if not os.path.exists(ply_path):
         print(f"points3D.ply not found. Creating {ply_path} from COLMAP points3D.")
+        # 把 COLMAP 点云写成 points3D.ply 的函数
         storePly(ply_path, points, rgb)
 
     try:
+        # 读取 points3D.ply 部分
         pcd = fetchPly(ply_path)
     except:
         pcd = None

@@ -38,6 +38,7 @@ python -m pip install ./submodules/simple-knn --no-build-isolation
 python -m pip install ./submodules/fused-ssim --no-build-isolation
 
 pip install seaborn
+### 注意，这一步必须前面做完才能做不然会卡死闪退！
 FORCE_CUDA=1 TORCH_CUDA_ARCH_LIST="8.9" pip install "git+https://github.com/facebookresearch/pytorch3d.git" --no-build-isolation
 pip install einops
 pip install scikit-image
@@ -61,7 +62,7 @@ python train.py \
   -s ~/autodl-tmp/datasets/buaa_net2 \
   -m output/buaa_net2 \
   --quiet --eval \
-  --iterations 20000 \
+  --iterations 30000 \
   --n_gaussians 6 \
   --simple \
   --init_voxel_size 0.01
@@ -73,6 +74,14 @@ python edge_extraction/eval_replica.py \
 --sample_resolution 0.002
 
 
+# 增加初始化点云致密
+
+python test_colmap_reader.py \
+  -s /home/gamma/rosbags/COLMAP/buaa_net2 \
+  -m output/test_ply/buaa_net2 \
+  --detector PidiNet \
+  --eval \
+  --init_voxel_size 0.01
 
 
 

@@ -13,11 +13,34 @@ import os
 import random
 import json
 from utils.system_utils import searchForMaxIteration
-from scene.dataset_readers import sceneLoadTypeCallbacks
-from scene.gaussian_model import GaussianModel
+from scene.dataset_readers import sceneLoadTypeCallbacks, storePly
+from scene.gaussian_model import GaussianModel, BasicPointCloud
 from scene.gaussian_curve_model import GaussianCurveModel
 from arguments import ModelParams
 from utils.camera_utils import cameraList_from_camInfos, camera_to_JSON
+
+import numpy as np
+import open3d as o3d
+
+
+# ============================================ 在这里加额外的致密策略 ==============================================
+def Simplyfill(points, colors, normals, grid_resX=50, grid_resY=50, grid_resZ=50):
+    xyz_min = points.min(axis=0)
+    xyz_max = points.max(axis=0)
+
+    xs = np.linspace(xyz_min[0], xyz_max[0], grid_resX)
+    ys = np.linspace(xyz_min[1], xyz_max[1], grid_resY)
+    zs = np.linspace(xyz_min[2], xyz_max[2], grid_resZ)
+
+    gx, gy, gz = np.meshgrid(xs, ys, zs)
+    grid_pts = np.stack([gx.ravel(), gy.ravel(), gz.ravel()], axis=1).astype(np.float32)
+
+    new_points  = np.vstack([points, grid_pts])
+    new_colors  = np.vstack([colors,  np.tile([1.0, 0.0, 0.0], (len(grid_pts), 1)) ])   # 红色
+    new_normals = np.vstack([normals, np.zeros((len(grid_pts), 3))])
+    return new_points, new_colors, new_normals
+# ==============================================================================================================
+
 
 class Scene:
 
@@ -42,6 +65,7 @@ class Scene:
         self.train_cameras = {}
         self.test_cameras = {}
 
+        # 在这里调用 dataset_readers.py 里的 sceneLoadTypeCallbacks ，然后使用 readColmapSceneInfo 读取
         if os.path.exists(os.path.join(args.source_path, "sparse")):
             scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.depths,
                                                           args.eval, args.train_test_exp, detector=args.detector,
@@ -57,6 +81,42 @@ class Scene:
 
         else:
             assert False, "Could not recognize scene type!"
+
+        # ============================================ 在这里加额外的致密策略 ==============================================
+        points = np.asarray(scene_info.point_cloud.points)
+        colors = np.asarray(scene_info.point_cloud.colors)
+        normals = np.asarray(scene_info.point_cloud.normals)
+        print(f"colmap得到点数:   {points.shape[0]}")
+
+        # 先去除离群点，再填充
+        # remove_radius_outlier: 某个点在 radius 半径内邻居数少于 nb_points 个，就认为是离群点删除
+        # nb_points 越大、radius 越小，滤除越激进
+        # radius 按场景对角线长度的 1% 自动计算，避免场景尺度不同时 radius 设死导致全被删
+        pcd_o3d = o3d.geometry.PointCloud()
+        pcd_o3d.points = o3d.utility.Vector3dVector(points)
+        pcd_o3d.colors = o3d.utility.Vector3dVector(colors)
+        scene_diag = float(np.linalg.norm(points.max(axis=0) - points.min(axis=0)))
+        radius = scene_diag * 0.01
+        print(f"scene diagonal: {scene_diag:.3f}, outlier radius: {radius:.3f}")
+        pcd_clean, _ = pcd_o3d.remove_radius_outlier(nb_points=30, radius=radius)
+        points = np.asarray(pcd_clean.points)
+        colors = np.asarray(pcd_clean.colors)
+        normals = np.zeros_like(points)
+        print(f"离群点去除后点数: {points.shape[0]} points")
+
+        # 无脑填充点云，生成一个网格点云
+        points, colors, normals = Simplyfill(points, colors, normals, grid_resX=50, grid_resY=50, grid_resZ=20)
+        input_filled_ply_path = os.path.join(self.model_path, "input_filled.ply")
+        storePly(input_filled_ply_path, points, colors * 255.0)
+        print(f"wrote input_filled.ply: {input_filled_ply_path}")
+        print(f"填充点云后点数: {points.shape[0]} points")
+
+        # 把填充后的点云写回 scene_info，这样后续 create_from_pcd 才真正用填充后的点初始化曲线
+        from scene.gaussian_model import BasicPointCloud
+        scene_info = scene_info._replace(
+            point_cloud=BasicPointCloud(points=points, colors=colors, normals=normals)
+        )
+        # ==============================================================================================================
 
         if not self.loaded_iter:
             if not args.simple:

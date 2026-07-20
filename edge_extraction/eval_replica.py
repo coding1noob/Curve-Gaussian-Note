@@ -214,7 +214,7 @@ def process_scan(
        
             os.makedirs(os.path.join(output_dir, 'novel_view'), exist_ok=True)
             plt.savefig(os.path.join(output_dir, 'novel_view', image.name),
-                       bbox_inches='tight', dpi=300)
+                       bbox_inches='tight', dpi=100)
             plt.close()
 
     # Create video from projected and original images
