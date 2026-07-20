@@ -1,8 +1,19 @@
-output/
-
+# Python 缓存
 __pycache__/
 *.pyc
-build/
-*.egg-info/
+*.pyo
+
+# 编译产物
 *.so
 *.o
+build/
+dist/
+*.egg-info/
+
+# 下载的安装包
+*.deb
+*.tar.gz
+*.zip
+
+# 测试输出
+output/
