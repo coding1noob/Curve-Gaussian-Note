@@ -62,8 +62,10 @@ class ModelParams(ParamGroup):
         self.eval = False
         # 平面加点
         self.Planefill3_view_depth = 20.0
-        self.Planefill3_angle_sum_threshold = 15.0
+        self.Planefill3_angle_sum_threshold = 10.0
         self.Planefill3_outer_count_threshold = 70
+        self.inner_count_threshold = 50
+        self.plane_fill_ratio = 0.02
         
         super().__init__(parser, "Loading Parameters", sentinel)
 

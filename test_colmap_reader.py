@@ -221,9 +221,9 @@ def Planefill2(points, colors, normals, view_cam, view_depth=20.0, depth_samples
     return new_points, new_colors, new_normals, fill_world_points, [chosen_depth], [chosen_outer_count]
 
 
-def Planefill3(points, colors, normals, view_cam, view_depth=20.0, depth_samples=200,
-               outer_count_threshold=500, center_ratio=0.5, plane_fill_ratio=0.1,
-               angle_sum_threshold=20.0):
+def Planefill3(points, colors, normals, view_cam, view_depth, depth_samples,
+               outer_count_threshold, center_ratio, plane_fill_ratio,
+               angle_sum_threshold, inner_count_threshold):
     depth_step = view_depth / depth_samples
     half_depth_window = depth_step * 0.5
     sample_depths = np.linspace(depth_step, view_depth, depth_samples, dtype=np.float32)
@@ -240,9 +240,7 @@ def Planefill3(points, colors, normals, view_cam, view_depth=20.0, depth_samples
     tan_half_fovx = np.tan(view_cam.FovX * 0.5)
     tan_half_fovy = np.tan(view_cam.FovY * 0.5)
 
-    chosen_depth = None
-    chosen_outer_count = None
-    chosen_outer_points_cam = None
+    candidate_planes = []
 
     for depth in sample_depths:
         depth_mask = np.abs(z - depth) <= half_depth_window
@@ -261,53 +259,80 @@ def Planefill3(points, colors, normals, view_cam, view_depth=20.0, depth_samples
         )
         in_outer_ring = in_full_view & (~in_center)
         outer_count = int(np.sum(in_outer_ring))
+        inner_count = int(np.sum(in_full_view & in_center))
 
         if outer_count <= outer_count_threshold:
             continue
+        if inner_count >= inner_count_threshold:
+            continue
 
-        chosen_depth = float(depth)
-        chosen_outer_count = outer_count
-        chosen_outer_points_cam = slice_points[in_outer_ring]
+        candidate_planes.append((outer_count, float(depth), slice_points[in_outer_ring]))
 
-    if chosen_depth is None:
+    if len(candidate_planes) == 0:
         return points, colors, normals, np.empty((0, 3), dtype=np.float32), [], []
-
-    ox = chosen_outer_points_cam[:, 0]
-    oy = chosen_outer_points_cam[:, 1]
-    oz = chosen_outer_points_cam[:, 2]
-    pitch_mean = float(np.mean(np.degrees(np.arctan2(oy, oz))))
-    yaw_mean = float(np.mean(np.degrees(np.arctan2(ox, oz))))
-
-    angle_means = np.array([pitch_mean, yaw_mean], dtype=np.float32)
-    if np.any(np.abs(angle_means) > angle_sum_threshold):
-        print(
-            f"Planefill3 skip {view_cam.image_name}: "
-            f"pitch_mean={pitch_mean:.2f}, yaw_mean={yaw_mean:.2f}, "
-            f"outer_count={chosen_outer_count}"
-        )
-        return points, colors, normals, np.empty((0, 3), dtype=np.float32), [], []
-
-    center_half_width = chosen_depth * tan_half_fovx * center_ratio
-    center_half_height = chosen_depth * tan_half_fovy * center_ratio
-    fill_step_x = max(center_half_width * 2.0 * plane_fill_ratio, 1e-6)
-    fill_step_y = max(center_half_height * 2.0 * plane_fill_ratio, 1e-6)
-
-    fill_x = np.arange(-center_half_width, center_half_width + fill_step_x * 0.5, fill_step_x, dtype=np.float32)
-    fill_y = np.arange(-center_half_height, center_half_height + fill_step_y * 0.5, fill_step_y, dtype=np.float32)
-    yy, xx = np.meshgrid(fill_y, fill_x, indexing="ij")
-    zz = np.full_like(xx, chosen_depth, dtype=np.float32)
-    fill_cam_points = np.stack([xx, yy, zz], axis=-1).reshape(-1, 3)
 
     world_to_camera = np.eye(4, dtype=np.float32)
     world_to_camera[:3, :3] = world_to_camera_rot
     world_to_camera[:3, 3] = world_to_camera_t
     camera_to_world = np.linalg.inv(world_to_camera)
 
-    fill_cam_points_h = np.concatenate([
-        fill_cam_points,
-        np.ones((fill_cam_points.shape[0], 1), dtype=np.float32)
-    ], axis=1)
-    fill_world_points = (camera_to_world @ fill_cam_points_h.T).T[:, :3]
+    fill_world_points_list = []
+    valid_fill_depths = []
+    fill_outer_counts = []
+    candidate_planes = sorted(candidate_planes, key=lambda x: x[0], reverse=True)[:5]
+    for chosen_outer_count, chosen_depth, chosen_outer_points_cam in candidate_planes:
+        ox = chosen_outer_points_cam[:, 0]
+        oy = chosen_outer_points_cam[:, 1]
+        oz = chosen_outer_points_cam[:, 2]
+        pitch_mean = float(np.mean(np.degrees(np.arctan2(oy, oz))))
+        yaw_mean = float(np.mean(np.degrees(np.arctan2(ox, oz))))
+
+        angle_means = np.array([pitch_mean, yaw_mean], dtype=np.float32)
+        if np.any(np.abs(angle_means) > angle_sum_threshold):
+            print(
+                f"Planefill3 skip {view_cam.image_name}: "
+                f"depth={chosen_depth:.2f}, pitch_mean={pitch_mean:.2f}, yaw_mean={yaw_mean:.2f}, "
+                f"outer_count={chosen_outer_count}, inner_count_threshold={inner_count_threshold}"
+            )
+            continue
+
+        fill_depths = [
+            chosen_depth - half_depth_window,
+            chosen_depth,
+            chosen_depth + half_depth_window,
+        ]
+        fill_cam_points_list = []
+        for fill_depth in fill_depths:
+            if fill_depth <= 0.0:
+                continue
+
+            full_half_width = fill_depth * tan_half_fovx
+            full_half_height = fill_depth * tan_half_fovy
+            fill_step_x = max(full_half_width * 2.0 * plane_fill_ratio, 1e-6)
+            fill_step_y = max(full_half_height * 2.0 * plane_fill_ratio, 1e-6)
+
+            fill_x = np.arange(-full_half_width, full_half_width + fill_step_x * 0.5, fill_step_x, dtype=np.float32)
+            fill_y = np.arange(-full_half_height, full_half_height + fill_step_y * 0.5, fill_step_y, dtype=np.float32)
+            yy, xx = np.meshgrid(fill_y, fill_x, indexing="ij")
+            zz = np.full_like(xx, fill_depth, dtype=np.float32)
+            fill_cam_points_list.append(np.stack([xx, yy, zz], axis=-1).reshape(-1, 3))
+            valid_fill_depths.append(float(fill_depth))
+            fill_outer_counts.append(chosen_outer_count)
+
+        if len(fill_cam_points_list) == 0:
+            continue
+
+        fill_cam_points = np.concatenate(fill_cam_points_list, axis=0)
+        fill_cam_points_h = np.concatenate([
+            fill_cam_points,
+            np.ones((fill_cam_points.shape[0], 1), dtype=np.float32)
+        ], axis=1)
+        fill_world_points_list.append((camera_to_world @ fill_cam_points_h.T).T[:, :3])
+
+    if len(fill_world_points_list) == 0:
+        return points, colors, normals, np.empty((0, 3), dtype=np.float32), [], []
+
+    fill_world_points = np.concatenate(fill_world_points_list, axis=0)
 
     fill_colors = np.tile([0.0, 0.0, 1.0], (fill_world_points.shape[0], 1))
     fill_normals = np.zeros_like(fill_world_points)
@@ -315,7 +340,7 @@ def Planefill3(points, colors, normals, view_cam, view_depth=20.0, depth_samples
     new_points = np.vstack([points, fill_world_points])
     new_colors = np.vstack([colors, fill_colors])
     new_normals = np.vstack([normals, fill_normals])
-    return new_points, new_colors, new_normals, fill_world_points, [chosen_depth], [chosen_outer_count]
+    return new_points, new_colors, new_normals, fill_world_points, valid_fill_depths, fill_outer_counts
 
 def main():
     parser = argparse.ArgumentParser(description="Test COLMAP-format scene loading without training.")
@@ -462,12 +487,13 @@ def main():
             for cam_idx, view_cam in enumerate(scene_info.train_cameras):
                 _, _, _, plane_points, filled_depths, outer_counts = Planefill3(
                     base_points, base_colors, base_normals, view_cam,
-                    view_depth=20.0,            # buaa_net2 是 20.0， buaa_net 是 5.0
+                    view_depth=5.0,            # buaa_net2 是 20.0， buaa_net 是 5.0
                     depth_samples=200,
                     outer_count_threshold=70,
                     center_ratio=0.5,
-                    plane_fill_ratio=0.05,
-                    angle_sum_threshold=15.0,
+                    plane_fill_ratio=0.02,
+                    angle_sum_threshold=10.0,
+                    inner_count_threshold=50
                 )
                 if plane_points.shape[0] == 0:
                     continue
@@ -478,7 +504,32 @@ def main():
 
             print(f"3方法补red点")
             print(f"Planefill3 points: {planefill3_points_count} points")
-            print(f"Planefill3 filled farthest depth slices: {len(planefill3_depths)} / {len(scene_info.train_cameras)}")
+            print(f"Planefill3 filled plane layers: {len(planefill3_depths)} / {len(scene_info.train_cameras) * 5 * 3}")
+
+            # ============ 用 Planefill4 基于 Planefill3 候选面向四边扩张补黄色点 ==============
+            # planefill4_points_count = 0
+            # planefill4_depths = []
+            # for cam_idx, view_cam in enumerate(scene_info.train_cameras):
+            #     _, _, _, plane_points, filled_depths, outer_counts = Planefill4(
+            #         base_points, base_colors, base_normals, view_cam,
+            #         view_depth=5.0,            # buaa_net2 是 20.0， buaa_net 是 5.0
+            #         depth_samples=200,
+            #         outer_count_threshold=70,
+            #         center_ratio=0.5,
+            #         plane_fill_ratio=0.02,
+            #         angle_sum_threshold=10.0,
+            #         inner_count_threshold=50
+            #     )
+            #     if plane_points.shape[0] == 0:
+            #         continue
+            #     fill_points_list.append(plane_points)
+            #     fill_colors_list.append(np.tile([1.0, 1.0, 0.0], (plane_points.shape[0], 1)))
+            #     planefill4_points_count += plane_points.shape[0]
+            #     planefill4_depths.extend(filled_depths)
+
+            # print(f"4方法扩张补yellow点")
+            # print(f"Planefill4 points: {planefill4_points_count} points")
+            # print(f"Planefill4 expanded planes: {len(planefill4_depths)}")
 
 
             # 最终转化输出
