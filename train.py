@@ -19,6 +19,8 @@ from einops import rearrange
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams, OptimizationParamsPidinet, OptimizationParamsReplica
+from plyfile import PlyData, PlyElement
+from utils.sh_utils import RGB2SH
 try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_FOUND = True
@@ -62,6 +64,55 @@ def _find_sparse_curve_endpoint_pairs(curve_points, distance_threshold):
     rows = sparse_dist.row[valid].astype(np.int64, copy=False)
     cols = sparse_dist.col[valid].astype(np.int64, copy=False)
     return rows, cols
+
+
+def _inverse_sigmoid_np(x):
+    # PLY 里保存的是 3DGS 习惯使用的未激活 opacity 参数，
+    # 这里要把 [0, 1] 的概率值转回 logit，保证 3DGS_NOTE 读入后数值语义一致。
+    x = np.clip(x, 1e-6, 1.0 - 1e-6)
+    return np.log(x / (1.0 - x))
+
+
+@torch.no_grad()
+def save_curve_gaussians_for_3dgs_note(gaussians, path, sh_degree=3):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    # 取出当前训练完成后的曲线高斯中心点，作为后续 3DGS_NOTE 的几何初始化。
+    xyz = gaussians.get_xyz.detach().cpu().numpy().astype(np.float32)
+    normals = np.zeros_like(xyz, dtype=np.float32)
+
+    # CurveGaussian 更偏几何先验，颜色本身没有被 RGB 图像监督训练。
+    # 所以这里输出中性灰的 SH 初值，让 3DGS_NOTE 后续重新从图像学习高保真颜色。
+    neutral_rgb = torch.full((xyz.shape[0], 3), 0.5, dtype=torch.float32, device="cuda")
+    f_dc = RGB2SH(neutral_rgb).detach().cpu().numpy().astype(np.float32)
+    # 高阶 SH 系数直接置零，避免把 CurveGaussian 的边缘风格错误带到 3DGS_NOTE 里。
+    f_rest = np.zeros((xyz.shape[0], 3 * ((sh_degree + 1) ** 2 - 1)), dtype=np.float32)
+
+    # opacity / scale / rotation 都转换成 3DGS 标准可读格式。
+    opacity = gaussians.get_opacity.detach().cpu().numpy().astype(np.float32)
+    opacity = _inverse_sigmoid_np(opacity)
+
+    scales = gaussians.get_scaling.detach().cpu().numpy().astype(np.float32)
+    # 3DGS 里保存的是 log(scale)，这里要手动取对数。
+    scales = np.log(np.maximum(scales, 1e-8)).astype(np.float32)
+
+    rotations = gaussians.get_rotation.detach().cpu().numpy().astype(np.float32)
+
+    # 按 3DGS_NOTE / 3DGS 约定拼出 vertex 属性表。
+    attributes = np.concatenate((xyz, normals, f_dc, f_rest, opacity, scales, rotations), axis=1)
+    attr_names = ["x", "y", "z", "nx", "ny", "nz"]
+    attr_names += [f"f_dc_{i}" for i in range(3)]
+    attr_names += [f"f_rest_{i}" for i in range(f_rest.shape[1])]
+    attr_names += ["opacity"]
+    attr_names += [f"scale_{i}" for i in range(3)]
+    attr_names += [f"rot_{i}" for i in range(4)]
+
+    dtype_full = [(name, "f4") for name in attr_names]
+    elements = np.empty(xyz.shape[0], dtype=dtype_full)
+    elements[:] = list(map(tuple, attributes))
+    # 直接写成标准 PLY，供 3DGS_NOTE 后续读取初始化。
+    PlyData([PlyElement.describe(elements, "vertex")], text=False).write(path)
+    print(f"Saved {path} for 3DGS_NOTE initialization.")
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations,
              checkpoint_iterations, checkpoint, debug_from):
@@ -333,6 +384,10 @@ def extract_curves(gaussians, opt, scene, simple=False):
         # simple 模式只需要给 eval_replica.py 用的参数化边缘 JSON。
         # 不再调用 get_parametric_edge() 对每条 Bezier/线段重新采样，否则大场景会在训练结束后卡很久。
         return_edge_dict = merged_edge_dict
+        # 额外导出一个给 3DGS_NOTE 用的标准高斯初始化 PLY，
+        # 这样后面可以把 CurveGaussian 的几何结构和 COLMAP 原始点云合并训练。
+        curve_init_ply_path = os.path.join(scene.model_path, "curve_3dgs_init.ply")
+        save_curve_gaussians_for_3dgs_note(gaussians, curve_init_ply_path, sh_degree=3)
     else:
         from edge_extraction.extract_para_edge import get_parametric_edge
         # get_parametric_edge 把训练得到的“参数化边缘”（Bezier 曲线 + 直线段）

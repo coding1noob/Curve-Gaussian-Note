@@ -126,3 +126,25 @@ curve_conn = 0.03297
 
 opacity = 0.64392
 当前所有曲线的平均 opacity 值。fix_opacity() 在第 7000 步把 opacity 强制拉到 ≥ 0.6 并冻结，所以 7000 步之后这个值基本稳定在 0.6 以上，不再下降。如果接近 1.0 说明大多数曲线都是"实"的；0.64 说明曲线整体偏弱，还有部分曲线被 mask 遮住。
+
+# 输出解耦
+
+<model_path>/
+  cfg_args
+  cameras.json
+  input.ply
+  input_filled.ply
+  exposure.json
+  point_cloud/
+    iteration_3000/
+      point_cloud.ply
+      curve_step3000.ply
+      ellipsoids_step3000.ply
+    iteration_10000/
+      point_cloud.ply
+      curve_step10000.ply
+      ellipsoids_step10000.ply
+  chkpnt10000.pth
+  edge_points.ply
+  parametric_edges.json
+  events.out.tfevents...   # 如果 tensorboard 可用
