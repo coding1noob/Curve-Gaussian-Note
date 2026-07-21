@@ -39,6 +39,134 @@ def Simplyfill(points, colors, normals, grid_resX=50, grid_resY=50, grid_resZ=50
     new_colors  = np.vstack([colors,  np.tile([1.0, 0.0, 0.0], (len(grid_pts), 1)) ])   # 红色
     new_normals = np.vstack([normals, np.zeros((len(grid_pts), 3))])
     return new_points, new_colors, new_normals
+
+def _Planefill3_single(points, colors, normals, view_cam, view_depth=20.0, depth_samples=200,
+                       outer_count_threshold=500, center_ratio=0.5, plane_fill_ratio=0.1,
+                       angle_sum_threshold=20.0):
+    depth_step = view_depth / depth_samples
+    half_depth_window = depth_step * 0.5
+    sample_depths = np.linspace(depth_step, view_depth, depth_samples, dtype=np.float32)
+
+    world_to_camera_rot = view_cam.R.transpose().astype(np.float32)
+    world_to_camera_t = view_cam.T.astype(np.float32)
+    points_cam = points.astype(np.float32) @ world_to_camera_rot.T + world_to_camera_t
+
+    z = points_cam[:, 2]
+    valid_depth = (z > 0.0) & (z <= view_depth + half_depth_window)
+    points_cam = points_cam[valid_depth]
+    z = points_cam[:, 2]
+
+    tan_half_fovx = np.tan(view_cam.FovX * 0.5)
+    tan_half_fovy = np.tan(view_cam.FovY * 0.5)
+
+    chosen_depth = None
+    chosen_outer_count = None
+    chosen_outer_points_cam = None
+
+    for depth in sample_depths:
+        depth_mask = np.abs(z - depth) <= half_depth_window
+        if not np.any(depth_mask):
+            continue
+
+        slice_points = points_cam[depth_mask]
+        slice_z = slice_points[:, 2]
+        proj_x = slice_points[:, 0] / slice_z
+        proj_y = slice_points[:, 1] / slice_z
+
+        in_full_view = (np.abs(proj_x) <= tan_half_fovx) & (np.abs(proj_y) <= tan_half_fovy)
+        in_center = (
+            (np.abs(proj_x) <= tan_half_fovx * center_ratio) &
+            (np.abs(proj_y) <= tan_half_fovy * center_ratio)
+        )
+        in_outer_ring = in_full_view & (~in_center)
+        outer_count = int(np.sum(in_outer_ring))
+
+        if outer_count <= outer_count_threshold:
+            continue
+
+        chosen_depth = float(depth)
+        chosen_outer_count = outer_count
+        chosen_outer_points_cam = slice_points[in_outer_ring]
+
+    if chosen_depth is None:
+        return np.empty((0, 3), dtype=np.float32), np.empty((0, 3), dtype=np.float32), np.empty((0, 3), dtype=np.float32)
+
+    ox = chosen_outer_points_cam[:, 0]
+    oy = chosen_outer_points_cam[:, 1]
+    oz = chosen_outer_points_cam[:, 2]
+    pitch_mean = float(np.mean(np.degrees(np.arctan2(oy, oz))))
+    yaw_mean = float(np.mean(np.degrees(np.arctan2(ox, oz))))
+
+    angle_means = np.array([pitch_mean, yaw_mean], dtype=np.float32)
+    if np.any(np.abs(angle_means) > angle_sum_threshold):
+        print(
+            f"Planefill3 skip {view_cam.image_name}: "
+            f"pitch_mean={pitch_mean:.2f}, yaw_mean={yaw_mean:.2f}, "
+            f"outer_count={chosen_outer_count}"
+        )
+        return np.empty((0, 3), dtype=np.float32), np.empty((0, 3), dtype=np.float32), np.empty((0, 3), dtype=np.float32)
+
+    center_half_width = chosen_depth * tan_half_fovx * center_ratio
+    center_half_height = chosen_depth * tan_half_fovy * center_ratio
+    fill_step_x = max(center_half_width * 2.0 * plane_fill_ratio, 1e-6)
+    fill_step_y = max(center_half_height * 2.0 * plane_fill_ratio, 1e-6)
+
+    fill_x = np.arange(-center_half_width, center_half_width + fill_step_x * 0.5, fill_step_x, dtype=np.float32)
+    fill_y = np.arange(-center_half_height, center_half_height + fill_step_y * 0.5, fill_step_y, dtype=np.float32)
+    yy, xx = np.meshgrid(fill_y, fill_x, indexing="ij")
+    zz = np.full_like(xx, chosen_depth, dtype=np.float32)
+    fill_cam_points = np.stack([xx, yy, zz], axis=-1).reshape(-1, 3)
+
+    world_to_camera = np.eye(4, dtype=np.float32)
+    world_to_camera[:3, :3] = world_to_camera_rot
+    world_to_camera[:3, 3] = world_to_camera_t
+    camera_to_world = np.linalg.inv(world_to_camera)
+
+    fill_cam_points_h = np.concatenate([
+        fill_cam_points,
+        np.ones((fill_cam_points.shape[0], 1), dtype=np.float32)
+    ], axis=1)
+    fill_world_points = (camera_to_world @ fill_cam_points_h.T).T[:, :3]
+
+    fill_colors = np.tile([0.0, 0.0, 1.0], (fill_world_points.shape[0], 1))
+    fill_normals = np.zeros_like(fill_world_points)
+    return fill_world_points, fill_colors, fill_normals
+
+def Planefill3(points, colors, normals, cam_infos, view_depth=20.0, depth_samples=200,
+               outer_count_threshold=500, center_ratio=0.5, plane_fill_ratio=0.1,
+               angle_sum_threshold=20.0):
+    if cam_infos is None:
+        return points, colors, normals
+    if not isinstance(cam_infos, (list, tuple)):
+        cam_infos = [cam_infos]
+
+    fill_points_list = []
+    fill_colors_list = []
+    fill_normals_list = []
+
+    for view_cam in cam_infos:
+        fill_points, fill_colors, fill_normals = _Planefill3_single(
+            points, colors, normals, view_cam,
+            view_depth=view_depth,
+            depth_samples=depth_samples,
+            outer_count_threshold=outer_count_threshold,
+            center_ratio=center_ratio,
+            plane_fill_ratio=plane_fill_ratio,
+            angle_sum_threshold=angle_sum_threshold,
+        )
+        if fill_points.shape[0] == 0:
+            continue
+        fill_points_list.append(fill_points)
+        fill_colors_list.append(fill_colors)
+        fill_normals_list.append(fill_normals)
+
+    if len(fill_points_list) == 0:
+        return points, colors, normals
+
+    points = np.vstack([points, np.concatenate(fill_points_list, axis=0)])
+    colors = np.vstack([colors, np.concatenate(fill_colors_list, axis=0)])
+    normals = np.vstack([normals, np.concatenate(fill_normals_list, axis=0)])
+    return points, colors, normals
 # ==============================================================================================================
 
 
@@ -105,7 +233,16 @@ class Scene:
         print(f"离群点去除后点数: {points.shape[0]} points")
 
         # 无脑填充点云，生成一个网格点云
-        points, colors, normals = Simplyfill(points, colors, normals, grid_resX=50, grid_resY=50, grid_resZ=20)
+        # points, colors, normals = Simplyfill(points, colors, normals, grid_resX=50, grid_resY=50, grid_resZ=20)
+        points, colors, normals = Planefill3(
+                    points, colors, normals, scene_info.train_cameras,
+                    view_depth=args.Planefill3_view_depth,
+                    depth_samples=200,
+                    Planefill3_outer_count_threshold=args.Planefill3_outer_count_threshold,
+                    center_ratio=0.5,
+                    plane_fill_ratio=0.05,
+                    angle_sum_threshold=args.Planefill3_angle_sum_threshold,
+                )
         input_filled_ply_path = os.path.join(self.model_path, "input_filled.ply")
         storePly(input_filled_ply_path, points, colors * 255.0)
         print(f"wrote input_filled.ply: {input_filled_ply_path}")

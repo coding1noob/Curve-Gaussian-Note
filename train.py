@@ -218,35 +218,57 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
                             dataset.train_test_exp)
 
             # 7. 结构调整：增密、剪枝、切分曲线，并把足够直的曲线转成显式线段结构。
+
+            # --- 7a. 增密阶段（iteration < densify_until_iter，默认 7000 之前）---
             if iteration < opt.densify_until_iter:
-                # Keep track of max radii in image-space for pruning
+                # 记录每个高斯在图像空间里的最大半径，用于后续判断是否需要增密或剪枝
                 gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
+                # 累积每个高斯的梯度信息，梯度大说明该区域拟合不够，需要增密
                 gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
+                    # 每隔 densification_interval（默认2000） 步执行一次增密+剪枝：
+                    # - 梯度大的高斯/曲线会被克隆或分裂，增加局部细节
+                    # - opacity 太低的曲线会被剪掉，减少无效高斯
+                    # - size_threshold: 7000 步后开始限制图像空间里过大的高斯
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
                     gaussians.densify_and_prune(opt.densify_grad_threshold, opt.opacity_cull, scene.cameras_extent, size_threshold, radii)
 
-
-
-            if iteration==opt.densify_until_iter:
+            # --- 7b. 增密结束时的最终剪枝（iteration == densify_until_iter，默认 7000）---
+            if iteration == opt.densify_until_iter:
+                # 把 opacity 仍然很低（<= opacity_cull_second）的曲线全部删掉
+                # 这是一次比增密阶段更激进的剪枝，清除训练前期没学到任何信息的曲线
                 prune_mask = (gaussians.get_curve_opacity <= opt.opacity_cull_second).squeeze()
                 gaussians.prune_curves(prune_mask)
+                # 释放 GPU 碎片内存
                 torch.cuda.empty_cache()
+                # 冻结 opacity：把所有曲线的 opacity 强制拉到 >= 0.6，并停止优化 opacity
+                # 之后 opacity 不再变化，只优化曲线形状、宽度、mask 等参数
                 gaussians.fix_opacity()
 
-
+            # --- 7c. 后期周期性剪枝（每 1000 步，500 offset，增密结束后）---
             if iteration % 1000 == 500 and iteration > opt.densify_until_iter:
+                # 根据 opacity 和 mask 再次剪掉弱曲线
                 gaussians.only_prune(opt.opacity_cull, opt.mask_threshold)
+                # 把 mask 接近 0 的采样高斯从曲线上切分出去或修剪掉，使曲线更精简
                 gaussians.mask_trim_split(opt.mask_threshold)
 
-            if iteration % 1000 ==0 and iteration > 3000 and iteration!=opt.iterations:
+            # --- 7d. 曲线按曲率切分（每 1000 步，3000 步后）---
+            if iteration % 1000 == 0 and iteration > 3000 and iteration != opt.iterations:
+                # 如果一条曲线的局部曲率太大（相邻高斯方向夹角超过 threshold_angle）
+                # 就把它从弯折处切断，分成两条更短的曲线
+                # 这样曲线能更好地拟合复杂形状，而不是用一条大弧硬拟合
                 gaussians.curve_split_curvature(opt.threshold_angle, opt.threshold_angle_skip)
 
-            if (iteration % 1000 == 0 and iteration > opt.densify_until_iter) or iteration==opt.iterations:
+            # --- 7e. 曲线拟合为线段 + 曲线合并（每 1000 步，增密结束后）---
+            if (iteration % 1000 == 0 and iteration > opt.densify_until_iter) or iteration == opt.iterations:
+                # 如果一条 Bezier 曲线已经足够直（控制点偏离直线小于 threshold_line）
+                # 就把它转成显式线段（is_bezier=False），减少参数量、提升导出效率
                 gaussians.fit_curve_to_line(opt.threshold_line, opt.threshold_max_line)
+                # 把距离近、方向相似的曲线/线段合并成一条，减少重复的边
                 gaussians.merge_curves(opt.distance_threshold, opt.similarity_threshold)
 
+            # ---  7f. 保存当前状态（两处 saving_iterations 判断）---
             if (iteration in saving_iterations) and not dataset.simple:
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)

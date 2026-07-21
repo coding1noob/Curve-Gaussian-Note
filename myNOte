@@ -76,13 +76,38 @@ python edge_extraction/eval_replica.py \
 
 # 增加初始化点云致密
 
+测试：
 python test_colmap_reader.py \
   -s /home/gamma/rosbags/COLMAP/buaa_net2 \
-  -m output/test_ply/buaa_net2 \
+  -m output/test_ply/buaa_net2_complex \
   --detector PidiNet \
   --eval \
   --init_voxel_size 0.01
 
+python test_colmap_reader.py \
+  -s /home/gamma/rosbags/COLMAP/buaa_net \
+  -m output/test_ply/buaa_net2_complex \
+  --detector PidiNet \
+  --eval \
+  --init_voxel_size 0.01
+
+
+测试通过后：
+export OMP_NUM_THREADS=8
+python train.py \
+  -s ~/autodl-tmp/datasets/buaa_net2 \
+  -m output/buaa_net2_dense2 \
+  --eval \
+  --iterations 30000 \
+  --n_gaussians 6 \
+  --simple \
+  --init_voxel_size 0.01
+
+export OMP_NUM_THREADS=8
+python edge_extraction/eval_replica.py \
+--dataset_dir ~/autodl-tmp/datasets/buaa_net2 \
+--base_dir output/buaa_net2_dense2 \
+--sample_resolution 0.002
 
 
 
