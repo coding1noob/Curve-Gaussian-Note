@@ -238,7 +238,7 @@ class Scene:
                     points, colors, normals, scene_info.train_cameras,
                     view_depth=args.Planefill3_view_depth,
                     depth_samples=200,
-                    Planefill3_outer_count_threshold=args.Planefill3_outer_count_threshold,
+                    outer_count_threshold=args.Planefill3_outer_count_threshold,
                     center_ratio=0.5,
                     plane_fill_ratio=0.05,
                     angle_sum_threshold=args.Planefill3_angle_sum_threshold,
