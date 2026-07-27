@@ -1,16 +1,24 @@
 # 配环境
 
-##
+## 创建conda环境
 git clone --recurse-submodules https://github.com/zhirui-gao/Curve-Gaussian.git
 
 conda create --prefix /root/autodl-tmp/envs/curveGS python=3.10 -y
+conda create --prefix /data1/jhc/miniconda3storage/curveGS python=3.10 -y
+
+conda create \
+--prefix /data1/jhc/miniconda3storage/curveGS \
+python=3.10 \
+-y \
+--override-channels \
+-c https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
 
 在 ~/.condarc 里添加路径, 之后 conda env list 就会显示名字了
 conda config --append envs_dirs /root/autodl-tmp/envs
 
 
 ## 第一步：小依赖 + NVIDIA包 全从清华装（快）                                             
-pip install --no-cache-dir \
+python -m pip install --no-cache-dir \
 filelock typing-extensions sympy networkx jinja2 fsspec numpy pillow mpmath MarkupSafe \
 nvidia-cuda-nvrtc==13.0.88 nvidia-cuda-runtime==13.0.96 nvidia-cuda-cupti==13.0.85 \
 nvidia-cudnn-cu13==9.15.1.9 nvidia-cublas==13.1.0.3 nvidia-cufft==12.0.0.61 \
@@ -21,16 +29,24 @@ cuda-bindings==13.0.3 cuda-pathfinder==1.5.6 triton==3.6.0 \
 -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 ## 第二步：只装 torch 本体，--no-deps 跳过依赖（慢速源只下这3个）
-pip install --no-cache-dir --no-deps \
+python -m pip install --no-cache-dir --no-deps \
 torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 \
 --index-url https://download.pytorch.org/whl/cu130
+
+下载速度慢可以用NjU的源：
+python -m pip install --no-cache-dir --no-deps \
+torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 \
+--index-url https://mirrors.nju.edu.cn/pytorch/whl/cu130
+
+！注意165服务器是cu128
+python -m pip install torch torchvision torchaudio --index-url https://mirrors.nju.edu.cn/pytorch/whl/cu128
 
 ## 验证
 python -c "import torch, torchvision, numpy; print('torch', torch.__version__);print('torchvision', torchvision.__version__); print('numpy', numpy.__version__); print('cuda', torch.cuda.is_available())"
 
 
 ##
-python -m pip install plyfile tqdm opencv-python joblib
+python -m pip install plyfile tqdm opencv-python joblib -i https://pypi.mirrors.ustc.edu.cn/simple/
 
 ##
 python -m pip install ./submodules/diff-cur-rasterization --no-build-isolation
@@ -91,39 +107,25 @@ python test_colmap_reader.py \
   --eval \
   --init_voxel_size 0.01
 
-
 测试通过后：
 
-buaa_net2_dense2:
-
-export OMP_NUM_THREADS=8
-python train.py \
-  -s ~/autodl-tmp/datasets/buaa_net2 \
-  -m output/buaa_net2_dense2 \
-  --eval \
-  --iterations 30000 \
-  --n_gaussians 6 \
-  --simple \
-  --init_voxel_size 0.01
-
-export OMP_NUM_THREADS=8
-python edge_extraction/eval_replica.py \
---dataset_dir ~/autodl-tmp/datasets/buaa_net2 \
---base_dir output/buaa_net2_dense2 \
---sample_resolution 0.002
-
-
 buaa_net2_dense3:
+判断图像内外环，
 
 export OMP_NUM_THREADS=8
 python train.py \
-  -s ~/autodl-tmp/datasets/buaa_net2 \
-  -m output/buaa_net2_dense3 \
-  --eval \
-  --iterations 20000 \
-  --n_gaussians 6 \
-  --simple \
-  --init_voxel_size 0.01
+-s ~/autodl-tmp/datasets/buaa_net2 \
+-m output/buaa_net2_dense3 \
+--eval \
+--iterations 20000 \
+--n_gaussians 6 \
+--simple \
+--init_voxel_size 0.01 \
+--similarity_threshold 0.92 \
+--distance_threshold 0.03 \
+--opacity_cull 0.02 \
+--opacity_cull_second 0.08 \
+--mask_threshold 0.02
 
 export OMP_NUM_THREADS=8
 python edge_extraction/eval_replica.py \
@@ -131,25 +133,372 @@ python edge_extraction/eval_replica.py \
 --base_dir output/buaa_net2_dense3 \
 --sample_resolution 0.002
 
+# 高斯泼溅训练1
+
+curveGS环境中安装：
+python -m pip install ./submodules/diff-gaussian-rasterization --no-build-isolation
+
+跑训练：
+python train.py \
+-s ~/autodl-tmp/datasets/buaa_net2 \
+-m output/buaa_net2_dense3 \
+--curvegs ~/autodl-tmp/Curve-Gaussian/output/buaa_net2_dense3/curve_3dgs_init.ply \
+--eval \
+--disable_viewer
+
+python render.py \
+-s ~/autodl-tmp/datasets/buaa_net2 \
+-m output/buaa_net2_dense3 \
+--iteration 30000 \
+
+TORCH_HOME=~/autodl-tmp/.cache/torch python metrics.py -m output/buaa_net2_dense3
+
+原版对比训练：
+python train.py \
+-s ~/autodl-tmp/datasets/buaa_net2 \
+-m output/buaa_net2 \
+--eval \
+--disable_viewer \
+--iterations 50000 \
+--save_iterations 30000 50000
+
+python render.py \
+-s ~/autodl-tmp/datasets/buaa_net2 \
+-m output/buaa_net2 \
+--iteration 30000
+
+python render.py \
+-s ~/autodl-tmp/datasets/buaa_net2 \
+-m output/buaa_net2 \
+--iteration 50000
 
 
+TORCH_HOME=~/autodl-tmp/.cache/torch python metrics.py -m output/buaa_net2
+
+# 提取曲线+高斯泼溅训练2
+
+先测试参数
+
+python test_colmap_reader.py \
+-s /home/gamma/rosbags/COLMAP/buaa_net \
+-m output/test_ply/buaa_net_complex4 \
+--detector PidiNet \
+--eval \
+--init_voxel_size 0.01
+
+得到：
+buaa_net_complex4
+                    view_depth=5.0,            # buaa_net2 是 20.0， buaa_net 是 5.0
+                    depth_samples=200,
+                    outer_count_threshold=70,
+                    center_ratio=0.5,
+                    plane_fill_ratio=0.05,
+                    angle_sum_threshold=15.0,
+                    inner_count_threshold=50
 
 
+然后跑曲线
+export OMP_NUM_THREADS=8
+python train.py \
+-s ~/autodl-tmp/datasets/buaa_net \
+-m output/buaa_net \
+--eval \
+--Planefill3_view_depth 5.0 \
+--Planefill3_angle_sum_threshold 15.0 \
+--inner_count_threshold 50 \
+--plane_fill_ratio 0.05 \
+--iterations 30000 \
+--n_gaussians 3 \
+--simple \
+--init_voxel_size 0.01 \
+--similarity_threshold 0.92 \
+--distance_threshold 0.03 \
+--opacity_cull 0.02 \
+--opacity_cull_second 0.08 \
+--mask_threshold 0.02
 
+export OMP_NUM_THREADS=8
+python edge_extraction/eval_replica.py \
+--dataset_dir ~/autodl-tmp/datasets/buaa_net \
+--base_dir output/buaa_net \
+--sample_resolution 0.002
 
+最后训练
+python train.py \
+-s ~/autodl-tmp/datasets/buaa_net \
+-m output/buaa_net \
+--eval \
+--disable_viewer \
+--curvegs ~/autodl-tmp/Curve-Gaussian/output/buaa_net/curve_3dgs_init.ply \
+--eval \
+--disable_viewer
 
+python render.py \
+-s ~/autodl-tmp/datasets/buaa_net \
+-m output/buaa_net \
+--iteration 30000 \
+--skip_train
 
+TORCH_HOME=~/autodl-tmp/.cache/torch python metrics.py -m output/buaa_net
 
+原版对比训练：
+unset CUDA_VISIBLE_DEVICES
+export CUDA_VISIBLE_DEVICES=4
+python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net \
+--eval \
+--disable_viewer \
+--iterations 60000 \
+--checkpoint_iterations 20000 40000
 
+python render.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net \
+--iteration 60000
 
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/buaa_net
 
+# buaa1
 
+测试：
+python test_colmap_reader.py \
+-s /home/gamma/rosbags/COLMAP/buaa2 \
+-m output/test_ply/buaa2 \
+--detector PidiNet \
+--eval \
+--init_voxel_size 0.01
 
+# 修改opacity之后的测试
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_opacity1 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/buaa_net/curve_3dgs_init.ply \
+--eval \
+--disable_viewer \
+--curve_opacity_fillter
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python render.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_opacity1 \
+--iteration 30000 \
+--skip_train
 
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/buaa_net_opacity1
 
+==============================================================  7.23之后  ==============================================================
 
+# 修改opacity之后效果不好，可视化受保护点数量比
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_opacity3 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/buaa_net/curve_3dgs_init.ply \
+--eval \
+--disable_viewer \
+--curve_opacity_fillter \
+--iteration 1 \
+--save_iterations 0
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python render.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_opacity3 \
+--iteration 0 \
+--skip_train
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python render.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_opacity3 \
+--iteration 2500 \
+--skip_train
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python render.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_opacity3 \
+--iteration 5000 \
+--skip_train
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python render.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_opacity3 \
+--iteration 10000 \
+--skip_train
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python render.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_opacity3 \
+--iteration 15000 \
+--skip_train
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python render.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_opacity3 \
+--iteration 20000 \
+--skip_train
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python render.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_opacity3 \
+--iteration 25000 \
+--skip_train
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python render.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_opacity3 \
+--iteration 30000 \
+--skip_train
+
+# 增加不透明度clone/split保留
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_opacity3 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/buaa_net/curve_3dgs_init.ply \
+--eval \
+--disable_viewer \
+--curve_opacity_fillter \
+--iteration 30000 \
+--save_iterations 0 2500 5000 10000 15000 20000 25000 30000
+
+# 增加不透明度clone/split保留，但会执行原版reset
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_opacity4 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/buaa_net/curve_3dgs_init.ply \
+--eval \
+--disable_viewer \
+--curve_opacity_fillter \
+--iteration 30000 \
+--save_iterations 0 2500 5000 10000 15000 20000 25000 30000
+
+bash render_curvegs_iterations.sh 6 /data1/jhc/datasets/buaa_net output/buaa_net_opacity4
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/buaa_net_opacity4
+
+# 增加不透明度clone/split保留，会执行reset，但reset到0.1
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_opacity5 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/buaa_net/curve_3dgs_init.ply \
+--eval \
+--disable_viewer \
+--curve_opacity_fillter \
+--iteration 30000 \
+--save_iterations 0 2500 5000 10000 15000 20000 25000 30000
+
+bash render_curvegs_iterations.sh 6 /data1/jhc/datasets/buaa_net output/buaa_net_opacity5
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/buaa_net_opacity5
+
+# 不改不透明度了，改位置，增加冻结，而且学习率降低，clone/split保留
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_opacity5_xyz1 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/buaa_net/curve_3dgs_init.ply \
+--eval \
+--disable_viewer \
+--curve_opacity_fillter \
+--curve_xyz_fillter \
+--iteration 30000 \
+--save_iterations 0 2500 5000 10000 15000 20000 25000 30000
+
+bash render_curvegs_iterations.sh 6 /data1/jhc/datasets/buaa_net output/buaa_net_opacity5_xyz1
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/buaa_net_opacity5_xyz1
+
+# 取消不透明度任何改进，单独进行位置学习率的改进
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_xyz2 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/buaa_net/curve_3dgs_init.ply \
+--eval \
+--disable_viewer \
+--curve_opacity_fillter \
+--curve_xyz_fillter \
+--iteration 30000 \
+--save_iterations 0 2500 5000 10000 15000 20000 25000 30000
+
+bash render_curvegs_iterations.sh 6 /data1/jhc/datasets/buaa_net output/buaa_net_xyz2
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/buaa_net_xyz2
+
+# 思考如何改善补点
+
+python test_colmap_reader.py \
+-s /home/gamma/rosbags/COLMAP/buaa_net \
+-m output/test_ply/buaa_net_simple \
+--detector PidiNet \
+--eval \
+--init_voxel_size 0.01 \
+--method 0 \
+--trajectory_root
+
+python test_colmap_reader.py \
+-s /home/gamma/rosbags/COLMAP/buaa1 \
+-m output/test_ply/buaa1_simple \
+--detector PidiNet \
+--eval \
+--init_voxel_size 0.01 \
+--method 0
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
 
 
 

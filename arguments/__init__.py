@@ -66,6 +66,11 @@ class ModelParams(ParamGroup):
         self.Planefill3_outer_count_threshold = 70
         self.inner_count_threshold = 50
         self.plane_fill_ratio = 0.02
+        self.fill_method = "planefill"
+        self.trajectory_root = False
+        self.fill_grid_resX = 50
+        self.fill_grid_resY = 20
+        self.fill_grid_resZ = 50
         
         super().__init__(parser, "Loading Parameters", sentinel)
 

@@ -402,6 +402,7 @@ class GaussianModel:
         PlyData([el]).write(path)
 
     def reset_opacity(self):
+        # self.get_opacity 表示读取当前的 opacity 值
         opacities_new = self.inverse_opacity_activation(torch.min(self.get_opacity, torch.ones_like(self.get_opacity)*0.1))
         optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
         self._opacity = optimizable_tensors["opacity"]

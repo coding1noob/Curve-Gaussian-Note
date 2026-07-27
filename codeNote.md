@@ -148,3 +148,35 @@ opacity = 0.64392
   edge_points.ply
   parametric_edges.json
   events.out.tfevents...   # 如果 tensorboard 可用
+
+  # 调参日志
+
+--threshold_angle
+当前默认 20，每 1000 iter 会按曲率把曲线切开。网状结构边缘检测有噪声，20 度太容易把一根线切成多段。
+看相邻两个高斯方向的夹角，超过就切
+
+--threshold_angle_skip
+看隔一个高斯的方向夹角，超过也切
+
+--threshold_line / --threshold_max_line
+这两个控制“足够直的曲线转成线段”。转成线段后，后续线段合并更容易。
+建议：
+--threshold_line 0.003 --threshold_max_line 0.01
+
+--n_gaussians
+你现在是 6，对长线条可能偏少。建议试 8 或 12。如果显存够，先试 12
+
+--similarity_threshold 0.92
+控制曲线/线段合并时的方向相似度门槛。值越高，要求方向越一致才合并；值越低，更容易合并。
+
+--distance_threshold
+当前默认 0.02，控制后期曲线/线段合并距离。太小会导致断开的相邻线段合不回去。
+
+--opacity_cull 0.02
+训练后期周期性剪枝用的 opacity 阈值。opacity 低于这个值的曲线更容易被删。
+
+--opacity_cull_second 0.08
+在 densify_until_iter 那一刻的强剪枝阈值，默认发生在 7000 iter。低于这个 opacity 的曲线会被删。
+
+--mask_threshold 0.02
+控制 mask 剪枝/修剪。mask 低于阈值的曲线采样点会被认为不可靠，后期会被剪掉或切掉。

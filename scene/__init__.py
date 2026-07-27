@@ -21,24 +21,131 @@ from utils.camera_utils import cameraList_from_camInfos, camera_to_JSON
 
 import numpy as np
 import open3d as o3d
+from scipy.spatial import ConvexHull, cKDTree
 
 
 # ============================================ 在这里加额外的致密策略 ==============================================
-def Simplyfill(points, colors, normals, grid_resX=50, grid_resY=50, grid_resZ=50):
-    xyz_min = points.min(axis=0)
-    xyz_max = points.max(axis=0)
 
-    xs = np.linspace(xyz_min[0], xyz_max[0], grid_resX)
-    ys = np.linspace(xyz_min[1], xyz_max[1], grid_resY)
-    zs = np.linspace(xyz_min[2], xyz_max[2], grid_resZ)
+def _camera_centers_from_cameras(cameras):
+    centers = []
+    for cam in cameras:
+        world_to_camera_rot = cam.R.transpose().astype(np.float32)
+        world_to_camera_t = cam.T.astype(np.float32)
+        world_to_camera = np.eye(4, dtype=np.float32)
+        world_to_camera[:3, :3] = world_to_camera_rot
+        world_to_camera[:3, 3] = world_to_camera_t
+        camera_to_world = np.linalg.inv(world_to_camera)
+        centers.append(camera_to_world[:3, 3])
+    return np.asarray(centers, dtype=np.float32)
 
-    gx, gy, gz = np.meshgrid(xs, ys, zs)
-    grid_pts = np.stack([gx.ravel(), gy.ravel(), gz.ravel()], axis=1).astype(np.float32)
+def _trajectory_up_axis(cameras):
+    camera_centers = _camera_centers_from_cameras(cameras)
+    if camera_centers.shape[0] < 3:
+        return None
 
-    new_points  = np.vstack([points, grid_pts])
-    new_colors  = np.vstack([colors,  np.tile([1.0, 0.0, 0.0], (len(grid_pts), 1)) ])   # 红色
+    centered = camera_centers - camera_centers.mean(axis=0)
+    _, _, Vt = np.linalg.svd(centered, full_matrices=False)
+    return Vt[-1]
+
+def _min_area_rect_basis(points, up_axis=None):
+    centroid = points.mean(axis=0)
+    centered = points - centroid
+    if up_axis is None:
+        _, _, Vt = np.linalg.svd(centered, full_matrices=False)
+        e1, e2, up_axis = Vt[0], Vt[1], Vt[2]
+    else:
+        up_axis = np.asarray(up_axis, dtype=np.float64)
+        up_axis = up_axis / max(np.linalg.norm(up_axis), 1e-12)
+        projected = centered - (centered @ up_axis)[:, None] * up_axis[None, :]
+        _, _, Vt_plane = np.linalg.svd(projected, full_matrices=False)
+        e1 = Vt_plane[0]
+        e1 = e1 - np.dot(e1, up_axis) * up_axis
+        e1 = e1 / max(np.linalg.norm(e1), 1e-12)
+        e2 = np.cross(up_axis, e1)
+        e2 = e2 / max(np.linalg.norm(e2), 1e-12)
+
+    pts2d = np.stack([centered @ e1, centered @ e2], axis=1)
+    hull = ConvexHull(pts2d)
+    hull_pts = pts2d[hull.vertices]
+    n = len(hull_pts)
+
+    best_area = np.inf
+    best_angle = 0.0
+    for i in range(n):
+        edge = hull_pts[(i + 1) % n] - hull_pts[i]
+        angle = np.arctan2(edge[1], edge[0])
+        c, s = np.cos(angle), np.sin(angle)
+        rot = np.array([[c, -s], [s, c]])
+        rotated = hull_pts @ rot
+        w = rotated[:, 0].max() - rotated[:, 0].min()
+        h = rotated[:, 1].max() - rotated[:, 1].min()
+        area = w * h
+        if area < best_area:
+            best_area = area
+            best_angle = angle
+
+    c, s = np.cos(best_angle), np.sin(best_angle)
+    u2d, v2d = np.array([c, s]), np.array([-s, c])
+    u3d = u2d[0] * e1 + u2d[1] * e2
+    v3d = v2d[0] * e1 + v2d[1] * e2
+
+    w = (pts2d @ u2d).max() - (pts2d @ u2d).min()
+    h = (pts2d @ v2d).max() - (pts2d @ v2d).min()
+    axis0, axis1 = (u3d, v3d) if w >= h else (v3d, u3d)
+
+    Vt_final = np.stack([axis0, axis1, up_axis], axis=0)
+    return centroid, Vt_final
+
+def Simplyfill2(points, colors, normals, grid_resX=50, grid_resY=50, grid_resZ=50, up_axis=None):
+    # 使用贴合场景的坐标系；只保留落在已有点水平膨胀区域内的竖向补点线
+    clean_centroid, Vt = _min_area_rect_basis(points, up_axis=up_axis)
+    centered = points - clean_centroid
+    pts_pca = centered @ Vt.T
+
+    pca_min = pts_pca.min(axis=0)
+    pca_max = pts_pca.max(axis=0)
+    bbox_length = pca_max[0] - pca_min[0]
+    bbox_width = pca_max[1] - pca_min[1]
+    half_expand_length = bbox_length / 10.0
+    half_expand_width = bbox_width / 10.0
+
+    xs = np.linspace(pca_min[0], pca_max[0], grid_resX)
+    ys = np.linspace(pca_min[1], pca_max[1], grid_resY)
+    zs = np.linspace(pca_min[2], pca_max[2], grid_resZ)
+
+    gx, gy = np.meshgrid(xs, ys, indexing="ij")
+    candidate_xy = np.stack([gx.ravel(), gy.ravel()], axis=1)
+    point_xy = pts_pca[:, :2]
+    tree = cKDTree(point_xy)
+    search_radius = max(half_expand_length, half_expand_width)
+    neighbor_lists = tree.query_ball_point(candidate_xy, r=search_radius, p=np.inf)
+
+    keep_column = np.zeros(candidate_xy.shape[0], dtype=bool)
+    for idx, neighbor_idx in enumerate(neighbor_lists):
+        if len(neighbor_idx) == 0:
+            continue
+        delta = np.abs(point_xy[neighbor_idx] - candidate_xy[idx])
+        keep_column[idx] = np.any(
+            (delta[:, 0] <= half_expand_length) &
+            (delta[:, 1] <= half_expand_width)
+        )
+
+    valid_xy = candidate_xy[keep_column]
+    if len(valid_xy) > 0:
+        grid_pca = np.stack([
+            np.repeat(valid_xy[:, 0], grid_resZ),
+            np.repeat(valid_xy[:, 1], grid_resZ),
+            np.tile(zs, len(valid_xy)),
+        ], axis=1).astype(np.float32)
+    else:
+        grid_pca = np.empty((0, 3), dtype=np.float32)
+    grid_pts = grid_pca @ Vt + clean_centroid
+
+    new_points = np.vstack([points, grid_pts])
+    new_colors = np.vstack([colors, np.tile([1.0, 0.0, 0.0], (len(grid_pts), 1))])
     new_normals = np.vstack([normals, np.zeros((len(grid_pts), 3))])
     return new_points, new_colors, new_normals
+
 
 def _Planefill3_single(points, colors, normals, view_cam, view_depth, depth_samples,
                        outer_count_threshold, center_ratio, plane_fill_ratio,
@@ -240,31 +347,55 @@ class Scene:
         # 先去除离群点，再填充
         # remove_radius_outlier: 某个点在 radius 半径内邻居数少于 nb_points 个，就认为是离群点删除
         # nb_points 越大、radius 越小，滤除越激进
-        # radius 按场景对角线长度的 1% 自动计算，避免场景尺度不同时 radius 设死导致全被删
+        # radius 按场景对角线长度（用 1%-99% 分位数估计，避免飘远的杂乱点把尺度撑大）的 1% 自动计算
         pcd_o3d = o3d.geometry.PointCloud()
         pcd_o3d.points = o3d.utility.Vector3dVector(points)
         pcd_o3d.colors = o3d.utility.Vector3dVector(colors)
-        scene_diag = float(np.linalg.norm(points.max(axis=0) - points.min(axis=0)))
+        p_low = np.percentile(points, 1, axis=0)
+        p_high = np.percentile(points, 99, axis=0)
+        scene_diag = float(np.linalg.norm(p_high - p_low))
         radius = scene_diag * 0.01
-        print(f"scene diagonal: {scene_diag:.3f}, outlier radius: {radius:.3f}")
+        print(f"scene diagonal (1-99 percentile): {scene_diag:.3f}, outlier radius: {radius:.3f}")
         pcd_clean, _ = pcd_o3d.remove_radius_outlier(nb_points=30, radius=radius)
+        print(f"radius outlier 去除后点数: {len(pcd_clean.points)} points")
+
+        # remove_statistical_outlier: 每个点到最近 nb_neighbors 个邻居的平均距离，
+        # 若超过 全局均值 + std_ratio*标准差 则视为离群点删除，能滤掉主体点云外围
+        # 整体飘远但内部略微聚集的杂乱点簇
+        pcd_clean, _ = pcd_clean.remove_statistical_outlier(nb_neighbors=30, std_ratio=2.0)
         points = np.asarray(pcd_clean.points)
         colors = np.asarray(pcd_clean.colors)
         normals = np.zeros_like(points)
         print(f"离群点去除后点数: {points.shape[0]} points")
 
-        # 无脑填充点云，生成一个网格点云
-        # points, colors, normals = Simplyfill(points, colors, normals, grid_resX=50, grid_resY=50, grid_resZ=20)
-        points, colors, normals = Planefill3(
-                    points, colors, normals, scene_info.train_cameras,
-                    view_depth=args.Planefill3_view_depth,
-                    depth_samples=200,
-                    outer_count_threshold=args.Planefill3_outer_count_threshold,
-                    center_ratio=0.5,
-                    plane_fill_ratio=args.plane_fill_ratio,
-                    angle_sum_threshold=args.Planefill3_angle_sum_threshold,
-                    inner_count_threshold=args.inner_count_threshold
-                )
+        if args.fill_method == "planefill":
+            points, colors, normals = Planefill3(
+                        points, colors, normals, scene_info.train_cameras,
+                        view_depth=args.Planefill3_view_depth,
+                        depth_samples=200,
+                        outer_count_threshold=args.Planefill3_outer_count_threshold,
+                        center_ratio=0.5,
+                        plane_fill_ratio=args.plane_fill_ratio,
+                        angle_sum_threshold=args.Planefill3_angle_sum_threshold,
+                        inner_count_threshold=args.inner_count_threshold
+                    )
+        elif args.fill_method == "simplefill":
+            trajectory_up_axis = None
+            if args.trajectory_root:
+                trajectory_up_axis = _trajectory_up_axis(scene_info.train_cameras)
+                if trajectory_up_axis is None:
+                    print("trajectory_root 启用失败: 训练相机数量少于 3，仍使用点云 PCA 的 z 轴")
+                else:
+                    print(f"trajectory_root z/up axis: {trajectory_up_axis}")
+            points, colors, normals = Simplyfill2(
+                points, colors, normals,
+                grid_resX=args.fill_grid_resX,
+                grid_resY=args.fill_grid_resY,
+                grid_resZ=args.fill_grid_resZ,
+                up_axis=trajectory_up_axis
+            )
+        else:
+            raise ValueError(f"Unknown fill_method: {args.fill_method}")
         input_filled_ply_path = os.path.join(self.model_path, "input_filled.ply")
         storePly(input_filled_ply_path, points, colors * 255.0)
         print(f"wrote input_filled.ply: {input_filled_ply_path}")
