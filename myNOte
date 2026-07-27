@@ -308,62 +308,6 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
 --iteration 1 \
 --save_iterations 0
 
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python render.py \
--s /data1/jhc/datasets/buaa_net \
--m output/buaa_net_opacity3 \
---iteration 0 \
---skip_train
-
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python render.py \
--s /data1/jhc/datasets/buaa_net \
--m output/buaa_net_opacity3 \
---iteration 2500 \
---skip_train
-
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python render.py \
--s /data1/jhc/datasets/buaa_net \
--m output/buaa_net_opacity3 \
---iteration 5000 \
---skip_train
-
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python render.py \
--s /data1/jhc/datasets/buaa_net \
--m output/buaa_net_opacity3 \
---iteration 10000 \
---skip_train
-
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python render.py \
--s /data1/jhc/datasets/buaa_net \
--m output/buaa_net_opacity3 \
---iteration 15000 \
---skip_train
-
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python render.py \
--s /data1/jhc/datasets/buaa_net \
--m output/buaa_net_opacity3 \
---iteration 20000 \
---skip_train
-
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python render.py \
--s /data1/jhc/datasets/buaa_net \
--m output/buaa_net_opacity3 \
---iteration 25000 \
---skip_train
-
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python render.py \
--s /data1/jhc/datasets/buaa_net \
--m output/buaa_net_opacity3 \
---iteration 30000 \
---skip_train
-
 # 增加不透明度clone/split保留
 
 unset CUDA_VISIBLE_DEVICES
@@ -476,7 +420,21 @@ python test_colmap_reader.py \
 --init_voxel_size 0.01 \
 --method 0
   
-  
+# 解决完了，开始跑curve!
+
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_simple \
+--eval \
+--iterations 30000 \
+--n_gaussians 3 \
+--fill_method simplefill \
+--trajectory_root \
+--fill_grid_resX 100 \
+--fill_grid_resY 25 \
+--fill_grid_resZ 50
   
   
   

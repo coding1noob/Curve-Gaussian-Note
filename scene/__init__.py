@@ -106,8 +106,8 @@ def Simplyfill2(points, colors, normals, grid_resX=50, grid_resY=50, grid_resZ=5
     pca_max = pts_pca.max(axis=0)
     bbox_length = pca_max[0] - pca_min[0]
     bbox_width = pca_max[1] - pca_min[1]
-    half_expand_length = bbox_length / 10.0
-    half_expand_width = bbox_width / 10.0
+    half_expand_length = bbox_length / 20.0
+    half_expand_width = bbox_width / 20.0
 
     xs = np.linspace(pca_min[0], pca_max[0], grid_resX)
     ys = np.linspace(pca_min[1], pca_max[1], grid_resY)
