@@ -246,11 +246,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
 
             if iteration % 10 == 0:
                 loss_dict = {
+                    "Curves": f"{gaussians.get_curve_points.shape[0]}",
+                    "Gs": f"{len(gaussians.get_xyz)}",
                     "Loss": f"{ema_loss_for_log:.{5}f}",
-                    "curve_smo": f"{curve_smo_for_log:.{5}f}",
-                    "curve_conn": f"{curve_conn_for_log:.{5}f}",
-                    "Points": f"{len(gaussians.get_xyz)}",
-                    "opacity": f"{gaussians.get_opacity.mean().item():.{5}f}",
+                    "smo": f"{curve_smo_for_log:.{5}f}",
+                    "conn": f"{curve_conn_for_log:.{5}f}",
+                    "opa": f"{gaussians.get_opacity.mean().item():.{5}f}",
                 }
                 progress_bar.set_postfix(loss_dict)
                 progress_bar.update(10)

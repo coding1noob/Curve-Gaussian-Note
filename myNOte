@@ -429,12 +429,19 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
 -m output/buaa_net_simple \
 --eval \
 --iterations 30000 \
---n_gaussians 3 \
 --fill_method simplefill \
 --trajectory_root \
 --fill_grid_resX 100 \
 --fill_grid_resY 25 \
---fill_grid_resZ 50
+--fill_grid_resZ 50 \
+--n_gaussians 3 \
+--simple \
+--init_voxel_size 0.01 \
+--similarity_threshold 0.92 \
+--distance_threshold 0.03 \
+--opacity_cull 0.02 \
+--opacity_cull_second 0.08 \
+--mask_threshold 0.02
   
   
   
