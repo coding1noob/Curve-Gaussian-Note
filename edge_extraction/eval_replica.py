@@ -38,8 +38,8 @@ def create_video_from_images(projected_dir, original_dir, output_path, fps=10):
     import tempfile
     
     # Get all image files
-    projected_files = sorted([f for f in os.listdir(projected_dir) if f.endswith('.jpg')])
-    original_files = sorted([f for f in os.listdir(original_dir) if f.endswith('.jpg')])
+    projected_files = sorted([f for f in os.listdir(projected_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
+    original_files = sorted([f for f in os.listdir(original_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
     
     if not projected_files or not original_files:
         print("No images found in one or both directories")
@@ -219,7 +219,10 @@ def process_scan(
 
     # Create video from projected and original images
     projected_dir = os.path.join(output_dir, 'novel_view')
-    original_dir = os.path.join(scene_data, 'color')
+    color_dir = os.path.join(scene_data, 'color')
+    images_dir = os.path.join(scene_data, 'images')
+    original_dir = color_dir if os.path.isdir(color_dir) else images_dir
+    print(f"Using original images from: {original_dir}")
     output_video = os.path.join(output_dir, f'{display_name}_comparison.mp4')
     create_video_from_images(projected_dir, original_dir, output_video)
 

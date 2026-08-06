@@ -23,9 +23,9 @@ python test_colmap_reader.py \
 ## 开启curveGS训练
 
 unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
--s /data1/jhc/datasets/DrJ \
--m output/DrJ3 \
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=5 python train.py \
+-s /data1/jhc/datasets/mipnerf360/bicycle \
+-m output/bicycle \
 --eval \
 --iterations 30000 \
 --fill_method simplefill \
@@ -37,3 +37,79 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
 --simple \
 --lambda_points_conn 0 \
 --outlier_nb_points 180
+
+python edge_extraction/eval_replica.py \
+--dataset_dir /data1/jhc/datasets/mipnerf360/bicycle \
+--base_dir output/bicycle \
+--sample_resolution 0.002
+
+
+
+
+
+# 对比试验
+
+## 3dgs
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/jhc/datasets/mipnerf360/bicycle \
+-m output/bicycle_repeat1 \
+--eval \
+--disable_viewer \
+--iterations 30000
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 TORCH_HOME=/data1/jhc/torch_cache python render.py \
+-s /data1/jhc/datasets/mipnerf360/bicycle \
+-m output/bicycle_repeat1 \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/bicycle_repeat1
+
+-----------------------------------------------------------------------------------
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
+-s /data1/jhc/datasets/mipnerf360/bicycle \
+-m output/bicycle_repeat2 \
+--eval \
+--disable_viewer \
+--iterations 30000
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 TORCH_HOME=/data1/jhc/torch_cache python render.py \
+-s /data1/jhc/datasets/mipnerf360/bicycle \
+-m output/bicycle_repeat2 \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/bicycle_repeat2
+
+-----------------------------------------------------------------------------------
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python train.py \
+-s /data1/jhc/datasets/mipnerf360/bicycle \
+-m output/bicycle_repeat3 \
+--eval \
+--disable_viewer \
+--iterations 30000
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 TORCH_HOME=/data1/jhc/torch_cache python render.py \
+-s /data1/jhc/datasets/mipnerf360/bicycle \
+-m output/bicycle_repeat3 \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/bicycle_repeat3
+
+
+
+
+
+
+
+
+
+
+
