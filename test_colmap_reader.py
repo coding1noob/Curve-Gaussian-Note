@@ -565,7 +565,7 @@ def main():
         scene_diag = float(np.linalg.norm(p_high - p_low))
         radius = scene_diag * 0.01
         print(f"scene diagonal (1-99 percentile): {scene_diag:.3f}, outlier radius: {radius:.3f}")
-        pcd_clean, _ = pcd_o3d.remove_radius_outlier(nb_points=30, radius=radius)      # nb_points=180
+        pcd_clean, _ = pcd_o3d.remove_radius_outlier(nb_points=180, radius=radius)      # nb_points=180
         print(f"radius outlier 去除后点数: {len(pcd_clean.points)} points")
 
         # remove_statistical_outlier: 每个点到最近 nb_neighbors 个邻居的平均距离，
@@ -598,7 +598,7 @@ def main():
                     else:
                         print(f"trajectory_root z/up axis: {trajectory_up_axis}")
                 # grid_resA，grid_resB，grid_resC 分别是沿长轴方向、宽度方向、高度方向的网格分辨率
-                points, colors, normals = Simplyfill2(points, colors, normals, grid_resX=100, grid_resY=25, grid_resZ=50,
+                points, colors, normals = Simplyfill2(points, colors, normals, grid_resX=100, grid_resY=100, grid_resZ=100,
                                                       up_axis=trajectory_up_axis)
                 input_filled_ply_path = os.path.join(model_path, "input_filled.ply")
                 storePly(input_filled_ply_path, points, colors * 255.0)

@@ -1,0 +1,629 @@
+
+# DrJ 数据集
+
+## 先补点试试
+
+python test_colmap_reader.py \
+-s /home/gamma/rosbags/COLMAP/DrJohnson_Reconstruction_Inputs_Outputs/colmap \
+-m output/test-DrJ \
+--detector PidiNet \
+--eval \
+--init_voxel_size 0.01 \
+--method 0 \
+--trajectory_root
+
+## ================================ 先跑 curveGS ========================================
+
+补前82310 points
+补后524810 points
+
+14:19
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/test-DrJ \
+--eval \
+--iterations 30000 \
+--fill_method simplefill \
+--trajectory_root \
+--fill_grid_resX 100 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 100 \
+--n_gaussians 6 \
+--simple \
+--init_voxel_size 0.01 \
+--similarity_threshold 0.92 \
+--distance_threshold 0.03 \
+--opacity_cull 0.02 \
+--opacity_cull_second 0.08 \
+--mask_threshold 0.02 \
+--lambda_points_conn 0
+
+## 跑 +gs
+
+### 什么都不加
+25:43
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_nothing \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ/curve_3dgs_init.ply
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_nothing \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/DrJ_nothing
+
+### 仅mcmc
+26:56
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_only_mcmc \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ/curve_3dgs_init.ply \
+--mcmc \
+--relocation \
+--cap_max 1000000 \
+--opacity_reg 0.01 \
+--scale_reg 0.01
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_only_mcmc \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/DrJ_only_mcmc
+
+### 全添加
+21:40
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_o_xyz_mcmc \
+--eval \
+--disable_viewer \
+--curve_xyz_fillter \
+--curve_opacity_fillter \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ/curve_3dgs_init.ply \
+--mcmc \
+--relocation \
+--cap_max 1000000 \
+--opacity_reg 0.01 \
+--scale_reg 0.01
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_o_xyz_mcmc \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/DrJ_o_xyz_mcmc
+
+### 只添加位置
+22:22
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_xyz_mcmc \
+--eval \
+--disable_viewer \
+--curve_xyz_fillter \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ/curve_3dgs_init.ply \
+--mcmc \
+--relocation \
+--cap_max 1000000 \
+--opacity_reg 0.01 \
+--scale_reg 0.01
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_xyz_mcmc \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/DrJ_xyz_mcmc
+
+### 只添加不透明度改进
+22:22
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_o_mcmc \
+--eval \
+--disable_viewer \
+--curve_opacity_fillter \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ/curve_3dgs_init.ply \
+--mcmc \
+--relocation \
+--cap_max 1000000 \
+--opacity_reg 0.01 \
+--scale_reg 0.01
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_o_mcmc \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/DrJ_o_mcmc
+
+## 其他算法对比
+
+# baseline
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_gs_repeat1 \
+--eval \
+--disable_viewer \
+--iterations 60000 \
+--save_iterations 7000 30000 60000
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_gs_repeat2 \
+--eval \
+--disable_viewer \
+--iterations 60000 \
+--save_iterations 7000 30000 60000
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_gs_repeat3 \
+--eval \
+--disable_viewer \
+--iterations 60000 \
+--save_iterations 7000 30000 60000
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 TORCH_HOME=/data1/jhc/torch_cache python render.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_gs_repeat3 \
+--iteration 30000 \
+--skip_train
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 TORCH_HOME=/data1/jhc/torch_cache python render.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_gs_repeat3 \
+--iteration 60000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/DrJ_gs_repeat3
+
+## 不信邪，在gaussian-splatting里面跑
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/DrJ \
+-m /data1/jhc/storage_of_code/gaussian-splatting/output/DrJ_gs \
+--iteration 60000 \
+--skip_train
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/DrJ \
+-m /data1/jhc/storage_of_code/gaussian-splatting/output/DrJ_gs \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m /data1/jhc/storage_of_code/gaussian-splatting/output/DrJ_gs
+
+# IndoorGS
+
+需要打开166服务器，然后启动里面的train.sbatch
+
+srun -p gpu \
+--gres=gpu:1 \
+--cpus-per-task=8 \
+--mem=32G \
+--time=04:00:00 \
+--pty bash -l
+
+conda activate 3dgs_note
+
+python -u train.py \
+--source_path "${DATA_ROOT}" \
+--model_path "${MODEL_PATH}" \
+--disable_viewer \
+--eval
+
+python render.py \
+-s /data2/buaajianghengchen/datasets/DrJ \
+-m output/DrJ_30000_60000_july29/ \
+--iteration 30000 \
+--skip_train
+
+python render.py \
+-s /data2/buaajianghengchen/datasets/DrJ \
+-m output/DrJ_30000_60000_july29/ \
+--iteration 60000 \
+--skip_train
+
+python metrics.py -m output/DrJ_30000_60000_july29
+
+# mip
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_only_mip \
+--eval \
+--iterations 60000 \
+--save_iterations 7000 30000 60000
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 TORCH_HOME=/data1/jhc/torch_cache python render.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_only_mip \
+--iteration 30000 \
+--skip_train \
+--show_metrics
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 TORCH_HOME=/data1/jhc/torch_cache python render.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_only_mip \
+--iteration 60000 \
+--skip_train \
+--show_metrics
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/DrJ_only_mip
+
+
+# ================================ 再战 curveGS ========================================
+
+补前82310 points
+补后973610 points
+
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ2 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill \
+--trajectory_root \
+--fill_grid_resX 100 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--init_voxel_size 0.01 \
+--similarity_threshold 0.92 \
+--distance_threshold 0.03 \
+--opacity_cull 0.02 \
+--opacity_cull_second 0.08 \
+--mask_threshold 0.02 \
+--lambda_points_conn 0
+
+number of curves/lines: 62 8550
+
+python edge_extraction/eval_replica.py \
+--dataset_dir /data1/jhc/datasets/DrJ \
+--base_dir output/DrJ2 \
+--sample_resolution 0.002
+
+思考是不是参数的原因
+
+补前 91951 points
+补后 982751 points
+
+15：32
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ3 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill \
+--trajectory_root \
+--fill_grid_resX 100 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0
+
+number of curves/lines: 31 15165
+
+python edge_extraction/eval_replica.py \
+--dataset_dir /data1/jhc/datasets/DrJ \
+--base_dir output/DrJ3 \
+--sample_resolution 0.002
+
+迭代数增大查看：
+24：05
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ4 \
+--eval \
+--iterations 60000 \
+--fill_method simplefill \
+--trajectory_root \
+--fill_grid_resX 100 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0
+
+number of curves/lines: 16 9437
+
+python edge_extraction/eval_replica.py \
+--dataset_dir /data1/jhc/datasets/DrJ \
+--base_dir output/DrJ4 \
+--sample_resolution 0.002
+
+## 再跑 +gs
+
+### 什么都不加
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_nothing_DrJ3 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ3/curve_3dgs_init.ply
+
+PSNR: 28.6607533  SSIM: 0.8849854  LPIPS: 0.2784342
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=5 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_nothing_DrJ3_repeat1 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ3/curve_3dgs_init.ply
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_nothing_DrJ3_repeat2 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ3/curve_3dgs_init.ply
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=5 python render_metrics.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_nothing_DrJ3_repeat1 \
+--iteration 30000 \
+--skip_train
+
+python metrics.py -m output/DrJ_nothing_DrJ3_repeat2
+
+## 放弃了，用回DrJ吧
+
+做 cap_max 消融，诊断 MCMC 退化原因
+
+--- 3000k ---
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_only_mcmc_max_3000k \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ/curve_3dgs_init.ply \
+--mcmc \
+--relocation \
+--cap_max 3000000 \
+--opacity_reg 0.01 \
+--scale_reg 0.01
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_only_mcmc_max_3000k \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/DrJ_only_mcmc_max_3000k
+
+  SSIM :    0.8818052
+  PSNR :   28.1229229
+  LPIPS:    0.2826006
+
+--- 5000k ---
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_only_mcmc_max_5000k \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ/curve_3dgs_init.ply \
+--mcmc \
+--relocation \
+--cap_max 5000000 \
+--opacity_reg 0.01 \
+--scale_reg 0.01
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_only_mcmc_max_5000k \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/DrJ_only_mcmc_max_5000k
+
+  SSIM :    0.8822383
+  PSNR :   28.1936340
+  LPIPS:    0.2820572
+
+当前 MCMC/relocation 与普通 3DGS/CurveGS 的组合方式在 Dr Johnson 上有害
+
+去掉mcmc，试试单独位置和单独不透明度
+
+### 只添加位置
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_xyz \
+--eval \
+--disable_viewer \
+--curve_xyz_fillter \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ/curve_3dgs_init.ply
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_xyz \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/DrJ_xyz
+
+### 只添加不透明度改进
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_o \
+--eval \
+--disable_viewer \
+--curve_opacity_fillter \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ/curve_3dgs_init.ply
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_o \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/DrJ_o
+
+### 二者均填加
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_o_xyz \
+--eval \
+--disable_viewer \
+--curve_opacity_fillter \
+--curve_xyz_fillter \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ/curve_3dgs_init.ply
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_o_xyz \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/DrJ_o_xyz
+
+### 修改不透明度漏洞后重新 只添加不透明度改进
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_o2 \
+--eval \
+--disable_viewer \
+--curve_opacity_fillter \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ/curve_3dgs_init.ply
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ_o2 \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/DrJ_o2
+
+=============================================================== 8.1往后 ===============================================================
+
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ3_xyzLimit_repeat1 \
+--eval \
+--disable_viewer \
+--curve_xyz_limit \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ3/curve_3dgs_init.ply
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ3_xyzLimit_repeat2 \
+--eval \
+--disable_viewer \
+--curve_xyz_limit \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ3/curve_3dgs_init.ply
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ3_xyzLimit_repeat3 \
+--eval \
+--disable_viewer \
+--curve_xyz_limit \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ3/curve_3dgs_init.ply
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ3_xyzLimit_repeat3 \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/DrJ3_xyzLimit_repeat3
+
+无作用，增加几代后不继承机制
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ3_xyzLimit2 \
+--eval \
+--disable_viewer \
+--curve_xyz_limit \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ3/curve_3dgs_init.ply
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ3_xyzLimit2 \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/DrJ3_xyzLimit2
+
+扩大几代？
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ3_xyzLimit2_max5_repeat1 \
+--eval \
+--disable_viewer \
+--curve_xyz_limit \
+--curve_xyz_limit_max_generation 5 \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/DrJ3/curve_3dgs_init.ply
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/DrJ \
+-m output/DrJ3_xyzLimit2_max5_repeat1 \
+--iteration 30000 \
+--skip_train
+
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/DrJ3_xyzLimit2_max5_repeat1
+
+
+
+
+
+
+

@@ -223,23 +223,26 @@ python edge_extraction/eval_replica.py \
 --base_dir output/buaa_net \
 --sample_resolution 0.002
 
-最后训练
-python train.py \
--s ~/autodl-tmp/datasets/buaa_net \
--m output/buaa_net \
+最后先在buaa_net训练
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_curveGS \
 --eval \
 --disable_viewer \
---curvegs ~/autodl-tmp/Curve-Gaussian/output/buaa_net/curve_3dgs_init.ply \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/buaa_net/curve_3dgs_init.ply \
 --eval \
 --disable_viewer
 
-python render.py \
--s ~/autodl-tmp/datasets/buaa_net \
--m output/buaa_net \
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_curveGS \
 --iteration 30000 \
 --skip_train
 
-TORCH_HOME=~/autodl-tmp/.cache/torch python metrics.py -m output/buaa_net
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/buaa_net_curveGS
 
 原版对比训练：
 unset CUDA_VISIBLE_DEVICES
@@ -420,8 +423,7 @@ python test_colmap_reader.py \
 --init_voxel_size 0.01 \
 --method 0
   
-# 解决完了，开始跑curve!
-
+# 解决完了（其实不），开始跑curve!
 
 unset CUDA_VISIBLE_DEVICES
 CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
@@ -443,27 +445,245 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
 --opacity_cull_second 0.08 \
 --mask_threshold 0.02
   
+python edge_extraction/eval_replica.py \
+--dataset_dir /data1/jhc/datasets/buaa_net \
+--base_dir output/buaa_net_simple \
+--sample_resolution 0.002
   
+发现效果不好，可能需要更密集
+
+python test_colmap_reader.py \
+-s /home/gamma/rosbags/COLMAP/buaa_net \
+-m output/test_ply/buaa_net_simple \
+--detector PidiNet \
+--eval \
+--init_voxel_size 0.01 \
+--method 0 \
+--trajectory_root
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_simple-2 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill \
+--trajectory_root \
+--fill_grid_resX 150 \
+--fill_grid_resY 75 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--init_voxel_size 0.01 \
+--similarity_threshold 0.92 \
+--distance_threshold 0.03 \
+--opacity_cull 0.02 \
+--opacity_cull_second 0.08 \
+--mask_threshold 0.02 \
+--lambda_points_conn 0
   
+python edge_extraction/eval_replica.py \
+--dataset_dir /data1/jhc/datasets/buaa_net \
+--base_dir output/buaa_net_simple-2 \
+--sample_resolution 0.002
+
+补点后606599。606599 * 3 = 1,819,797 个高斯
+上面的更密集，确实更好了
   
+# 27晚，跑gs训练
+去掉opacity fillter进行：
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_xyz2_dense \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/buaa_net_simple-2/curve_3dgs_init.ply \
+--eval \
+--disable_viewer \
+--curve_xyz_fillter \
+--iteration 30000 \
+--save_iterations 0 2500 5000 10000 15000 20000 25000 30000
+
+bash render_curvegs_iterations.sh 6 /data1/jhc/datasets/buaa_net output/buaa_net_xyz2_dense
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py -m output/buaa_net_xyz2_dense --skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/buaa_net_xyz2_dense
   
+融合 opacity fillter 与  xyz fillter
   
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_opacity5_xyz2_dense \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/buaa_net_simple-2/curve_3dgs_init.ply \
+--eval \
+--disable_viewer \
+--curve_xyz_fillter \
+--curve_opacity_fillter \
+--iteration 30000 \
+--save_iterations 0 2500 5000 10000 15000 20000 25000 30000
   
+bash render_curvegs_iterations.sh 6 /data1/jhc/datasets/buaa_net output/buaa_net_opacity5_xyz2_dense
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py -m output/buaa_net_opacity5_xyz2_dense --skip_train
   
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/buaa_net_opacity5_xyz2_dense
   
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+什么都不要融合，只补点看看
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_only_dense \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/buaa_net_simple-2/curve_3dgs_init.ply \
+--eval \
+--disable_viewer
+
+TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_only_dense \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/buaa_net_only_dense
+
+# 看看mip-splatting什么水平
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_only_mip \
+--iterations 60000 \
+--save_iterations 0 2500 5000 10000 15000 20000 25000 30000 \
+--eval
+
+bash render_curvegs_iterations.sh 6 /data1/jhc/datasets/buaa_net output/buaa_net_only_mip
+TORCH_HOME=/data1/jhc/torch_cache python render.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_only_mip \
+--iteration 60000 \
+--skip_train \
+--show_metrics
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/buaa_net_only_mip
+
+# 引入 mcmc，保留无脑补点、位置和不透明度双改进
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_o_xyz_dense_mcmc1 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/buaa_net_simple-2/curve_3dgs_init.ply \
+--curve_xyz_fillter \
+--curve_opacity_fillter \
+--mcmc
+
+TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_o_xyz_dense_mcmc1 \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/buaa_net_o_xyz_dense_mcmc1
+
+# 引入更全面的 mcmc
+
+## 位置，不透明度均改进		cap_max 3000k
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_o_xyz_dense_mcmc2 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/buaa_net_simple-2/curve_3dgs_init.ply \
+--curve_xyz_fillter \
+--curve_opacity_fillter \
+--mcmc \
+--relocation \
+--cap_max 3000000 \
+--opacity_reg 0.01 \
+--scale_reg 0.01
+
+## 位置，不透明度均改进		cap_max 1000k
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_o_xyz_dense_mcmc2_1000000 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/buaa_net_simple-2/curve_3dgs_init.ply \
+--curve_xyz_fillter \
+--curve_opacity_fillter \
+--mcmc \
+--relocation \
+--cap_max 1000000 \
+--opacity_reg 0.01 \
+--scale_reg 0.01
+
+## 仅位置改进
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_xyz_dense_mcmc2_1000000 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/buaa_net_simple-2/curve_3dgs_init.ply \
+--curve_xyz_fillter \
+--mcmc \
+--relocation \
+--cap_max 1000000 \
+--opacity_reg 0.01 \
+--scale_reg 0.01
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_xyz_dense_mcmc2_1000000 \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/buaa_net_xyz_dense_mcmc2_1000000
+
+## 无改进
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_dense_mcmc2_1000000 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/buaa_net_simple-2/curve_3dgs_init.ply \
+--mcmc \
+--relocation \
+--cap_max 1000000 \
+--opacity_reg 0.01 \
+--scale_reg 0.01
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=6 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/buaa_net \
+-m output/buaa_net_dense_mcmc2_1000000 \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/buaa_net_dense_mcmc2_1000000
+
+
+
+
+
+
+
+
+
 
 
 

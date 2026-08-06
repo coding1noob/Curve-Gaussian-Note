@@ -356,7 +356,7 @@ class Scene:
         scene_diag = float(np.linalg.norm(p_high - p_low))
         radius = scene_diag * 0.01
         print(f"scene diagonal (1-99 percentile): {scene_diag:.3f}, outlier radius: {radius:.3f}")
-        pcd_clean, _ = pcd_o3d.remove_radius_outlier(nb_points=30, radius=radius)
+        pcd_clean, _ = pcd_o3d.remove_radius_outlier(nb_points=args.outlier_nb_points, radius=radius)
         print(f"radius outlier 去除后点数: {len(pcd_clean.points)} points")
 
         # remove_statistical_outlier: 每个点到最近 nb_neighbors 个邻居的平均距离，

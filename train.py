@@ -39,7 +39,7 @@ try:
 except:
     SPARSE_ADAM_AVAILABLE = False
 
-
+# 用 CPU 时间换 GPU 显存
 def _find_sparse_curve_endpoint_pairs(curve_points, distance_threshold):
     # 我改的地方：这里只收集距离足够近的端点对，用于端点连接 loss。
     # 替代原来直接构造 2N x 2N 全量距离矩阵的写法，避免显存/内存爆炸。
@@ -221,6 +221,36 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
             curve_points = gaussians.get_curve_points
             start_points, end_points = curve_points[:,0], curve_points[:, -1] # N*3
             all_points = torch.cat([start_points, end_points], dim=0)
+
+            # 原版用GPU做全量距离矩阵，显存爆炸
+            # mask = torch.eye(len(start_points), dtype=torch.bool, device=start_points.device)
+            # mask = torch.cat([torch.cat([mask, mask], dim=1), torch.cat([mask, mask], dim=1)], dim=0)
+            # dist = torch.cdist(all_points, all_points, p=2)
+            # dis_thr = 0.05
+            # with torch.no_grad():
+            #     valid_mask = (dist < dis_thr) & (~mask)
+            # if valid_mask.any():
+            #     curve_conn = dist[valid_mask] 
+            #     curve_conn = curve_conn.mean()
+            #     loss = loss + opt.lambda_points_conn * curve_conn
+
+            # 假设现在有 N 条曲线，每条曲线有 2 个端点，所以端点数是：
+            # M = 2N。“全量矩阵”就是把每个端点和每个端点都算一遍距离，得到一个 M x M 的矩阵。
+            # 如果你有 140000 条曲线：
+            # 端点数 M = 280000
+            # 矩阵大小 = 280000 x 280000
+            # 也就是约：
+            # 78,400,000,000 个距离
+            # float32 一个数 4 字节，单这个矩阵就要：
+            # 78,400,000,000 * 4 ≈ 313 GB
+            # CPU KD-tree 是什么
+            # 当前版本没有算完整 M x M 距离矩阵，而是用 KD-tree 只找“距离小于阈值”的近邻端点。
+            # 也就是说它不问：
+            # 每个端点到所有端点距离是多少？
+            # 而是问：
+            # 每个端点附近 0.05 范围内有哪些端点？
+            # 这省显存很多，但代价是每步要在 CPU 上建树和查询，所以 7000 后会慢。
+            
             dis_thr = 0.05
             curve_conn = torch.tensor(0.0, device=all_points.device)
             # 我改的地方：先用 CPU KD-tree 找近邻端点对，再只在 GPU 上计算这些候选对的距离。

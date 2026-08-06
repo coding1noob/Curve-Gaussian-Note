@@ -71,7 +71,8 @@ class ModelParams(ParamGroup):
         self.fill_grid_resX = 50
         self.fill_grid_resY = 20
         self.fill_grid_resZ = 50
-        
+        self.outlier_nb_points = 30
+
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):
