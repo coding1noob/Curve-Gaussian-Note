@@ -43,8 +43,64 @@ python edge_extraction/eval_replica.py \
 --base_dir output/bicycle \
 --sample_resolution 0.002
 
+## 开启gs训练
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/jhc/datasets/mipnerf360/bicycle \
+-m output/bicycle_common_repeat1 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/bicycle/curve_3dgs_init.ply
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/mipnerf360/bicycle \
+-m output/bicycle_common_repeat1 \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/bicycle_common_repeat1
+
+-------------------------------------------------------------------------------------------
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
+-s /data1/jhc/datasets/mipnerf360/bicycle \
+-m output/bicycle_common_repeat2 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/bicycle/curve_3dgs_init.ply
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/mipnerf360/bicycle \
+-m output/bicycle_common_repeat2 \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/bicycle_common_repeat2
+
+-------------------------------------------------------------------------------------------
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python train.py \
+-s /data1/jhc/datasets/mipnerf360/bicycle \
+-m output/bicycle_common_repeat3 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/bicycle/curve_3dgs_init.ply
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/mipnerf360/bicycle \
+-m output/bicycle_common_repeat3 \
+--iteration 30000 \
+--skip_train
+
+TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/bicycle_common_repeat3
 
 
+SSIM : 0.7502282
+PSNR : 25.1378263
+LPIPS: 0.2366023
 
 
 # 对比试验
@@ -66,6 +122,15 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 TORCH_HOME=/data1/jhc/torch_
 --skip_train
 
 TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/bicycle_repeat1
+
+cd /data1/jhc/storage_of_code/gs_pro6000
+conda activate curveGS
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 TORCH_HOME=/data1/jhc/torch_cache python render_metrics.py \
+-s /data1/jhc/datasets/mipnerf360/bicycle \
+-m /data1/jhc/storage_of_code/gaussian-splatting/output/bicycle_repeat1 \
+--iteration 30000 \
+--skip_train
 
 -----------------------------------------------------------------------------------
 
@@ -103,7 +168,9 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 TORCH_HOME=/data1/jhc/torch_
 
 TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/bicycle_repeat3
 
-
+SSIM : 0.7474574
+PSNR : 25.1313941
+LPIPS: 0.2417101
 
 
 

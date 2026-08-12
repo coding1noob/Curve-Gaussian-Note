@@ -71,6 +71,10 @@ class ModelParams(ParamGroup):
         self.fill_grid_resX = 50
         self.fill_grid_resY = 20
         self.fill_grid_resZ = 50
+        # 8.12：Simplyfill3 的局部 X、Y 距离阈值和 Z 高度层容差。
+        self.fill_x_threshold = 0.1
+        self.fill_y_threshold = 0.1
+        self.fill_z_threshold = 0.1
         self.outlier_nb_points = 30
 
         super().__init__(parser, "Loading Parameters", sentinel)

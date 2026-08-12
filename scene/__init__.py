@@ -147,6 +147,83 @@ def Simplyfill2(points, colors, normals, grid_resX=50, grid_resY=50, grid_resZ=5
     return new_points, new_colors, new_normals
 
 
+# 8.12：在 Simplyfill2 基础上增加同高度层的 XY 平面逐点过滤。
+def Simplyfill3(points, colors, normals, grid_resX=50, grid_resY=50, grid_resZ=50,
+                up_axis=None, x_threshold=0.1, y_threshold=0.1, z_threshold=0.1):
+    clean_centroid, Vt = _min_area_rect_basis(points, up_axis=up_axis)
+    centered = points - clean_centroid
+    pts_pca = centered @ Vt.T
+
+    pca_min = pts_pca.min(axis=0)
+    pca_max = pts_pca.max(axis=0)
+    bbox_length = pca_max[0] - pca_min[0]
+    bbox_width = pca_max[1] - pca_min[1]
+    half_expand_length = bbox_length / 20.0
+    half_expand_width = bbox_width / 20.0
+
+    xs = np.linspace(pca_min[0], pca_max[0], grid_resX)
+    ys = np.linspace(pca_min[1], pca_max[1], grid_resY)
+    zs = np.linspace(pca_min[2], pca_max[2], grid_resZ)
+
+    gx, gy = np.meshgrid(xs, ys, indexing="ij")
+    candidate_xy = np.stack([gx.ravel(), gy.ravel()], axis=1)
+    point_xy = pts_pca[:, :2]
+    tree = cKDTree(point_xy)
+    search_radius = max(half_expand_length, half_expand_width)
+    neighbor_lists = tree.query_ball_point(candidate_xy, r=search_radius, p=np.inf)
+
+    keep_column = np.zeros(candidate_xy.shape[0], dtype=bool)
+    for idx, neighbor_idx in enumerate(neighbor_lists):
+        if len(neighbor_idx) == 0:
+            continue
+        delta = np.abs(point_xy[neighbor_idx] - candidate_xy[idx])
+        keep_column[idx] = np.any(
+            (delta[:, 0] <= half_expand_length) &
+            (delta[:, 1] <= half_expand_width)
+        )
+
+    valid_xy = candidate_xy[keep_column]
+    if len(valid_xy) == 0:
+        grid_pts = np.empty((0, 3), dtype=np.float32)
+    else:
+        grid_pca = np.stack([
+            np.repeat(valid_xy[:, 0], grid_resZ),
+            np.repeat(valid_xy[:, 1], grid_resZ),
+            np.tile(zs, len(valid_xy)),
+        ], axis=1).astype(np.float32)
+
+        # 8.12：逐个候选补点查询同高度层原始点，再判断 X、Y 最近距离。
+        if x_threshold <= 0 or y_threshold <= 0 or z_threshold <= 0:
+            raise ValueError("x_threshold, y_threshold and z_threshold must be positive")
+
+        # 按各方向阈值缩放坐标，将三个独立阈值统一为切比雪夫距离 1。
+        threshold_scale = np.array(
+            [x_threshold, y_threshold, z_threshold], dtype=pts_pca.dtype
+        )
+        scaled_points = pts_pca / threshold_scale
+        scaled_candidates = grid_pca / threshold_scale
+
+        # 只查询每个候选点最近的一个原始点，不再保存范围内的全部邻居索引。
+        candidate_tree = cKDTree(scaled_points)
+        nearest_distance, _ = candidate_tree.query(
+            scaled_candidates,
+            k=1,
+            p=np.inf,
+            distance_upper_bound=1.0,
+            workers=-1,
+        )
+        # 最近切比雪夫距离有限，表示存在一个原始点同时满足 X、Y、Z 三个阈值。
+        keep_point = np.isfinite(nearest_distance)
+        # 每个候选点独立应用判断结果，去除没有通过同高度层 X/Y 检查的点。
+        grid_pca = grid_pca[keep_point]
+        grid_pts = grid_pca @ Vt + clean_centroid
+
+    new_points = np.vstack([points, grid_pts])
+    new_colors = np.vstack([colors, np.tile([1.0, 0.0, 0.0], (len(grid_pts), 1))])
+    new_normals = np.vstack([normals, np.zeros((len(grid_pts), 3))])
+    return new_points, new_colors, new_normals
+
+
 def _Planefill3_single(points, colors, normals, view_cam, view_depth, depth_samples,
                        outer_count_threshold, center_ratio, plane_fill_ratio,
                        angle_sum_threshold, inner_count_threshold):
@@ -393,6 +470,25 @@ class Scene:
                 grid_resY=args.fill_grid_resY,
                 grid_resZ=args.fill_grid_resZ,
                 up_axis=trajectory_up_axis
+            )
+        elif args.fill_method == "simplefill3":
+            # 8.12：使用增加了 XY 最近距离过滤的 Simplyfill3。
+            trajectory_up_axis = None
+            if args.trajectory_root:
+                trajectory_up_axis = _trajectory_up_axis(scene_info.train_cameras)
+                if trajectory_up_axis is None:
+                    print("trajectory_root 启用失败: 训练相机数量少于 3，仍使用点云 PCA 的 z 轴")
+                else:
+                    print(f"trajectory_root z/up axis: {trajectory_up_axis}")
+            points, colors, normals = Simplyfill3(
+                points, colors, normals,
+                grid_resX=args.fill_grid_resX,
+                grid_resY=args.fill_grid_resY,
+                grid_resZ=args.fill_grid_resZ,
+                up_axis=trajectory_up_axis,
+                x_threshold=args.fill_x_threshold,
+                y_threshold=args.fill_y_threshold,
+                z_threshold=args.fill_z_threshold
             )
         else:
             raise ValueError(f"Unknown fill_method: {args.fill_method}")

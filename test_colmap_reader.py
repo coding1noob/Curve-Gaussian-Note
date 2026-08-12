@@ -188,6 +188,119 @@ def Simplyfill2(points, colors, normals, grid_resX=50, grid_resY=50, grid_resZ=5
 
 
 
+# 8.12：在 Simplyfill2 基础上增加同高度层的 XY 平面逐点过滤。
+def Simplyfill3(points, colors, normals, grid_resX=50, grid_resY=50, grid_resZ=50,
+                up_axis=None, x_threshold=0.1, y_threshold=0.1, z_threshold=0.1):
+    # 计算点云中心，并建立以点云长、宽、高方向为轴的局部坐标系。
+    clean_centroid, Vt = _min_area_rect_basis(points, up_axis=up_axis)
+    # 将原始点平移到以点云中心为原点的位置。
+    centered = points - clean_centroid
+    # 将原始点从世界坐标系转换到局部坐标系。
+    pts_pca = centered @ Vt.T
+
+    # 分别取得局部 X、Y、Z 三个方向的最小坐标。
+    pca_min = pts_pca.min(axis=0)
+    # 分别取得局部 X、Y、Z 三个方向的最大坐标。
+    pca_max = pts_pca.max(axis=0)
+    # 计算局部 X 方向的点云包围盒长度。
+    bbox_length = pca_max[0] - pca_min[0]
+    # 计算局部 Y 方向的点云包围盒宽度。
+    bbox_width = pca_max[1] - pca_min[1]
+    # 第一阶段在局部 X 方向使用包围盒长度的 1/20 作为邻域半宽。
+    half_expand_length = bbox_length / 20.0
+    # 第一阶段在局部 Y 方向使用包围盒宽度的 1/20 作为邻域半宽。
+    half_expand_width = bbox_width / 20.0
+
+    # 在局部 X 范围内均匀生成 grid_resX 个网格坐标。
+    xs = np.linspace(pca_min[0], pca_max[0], grid_resX)
+    # 在局部 Y 范围内均匀生成 grid_resY 个网格坐标。
+    ys = np.linspace(pca_min[1], pca_max[1], grid_resY)
+    # 在局部 Z 范围内均匀生成 grid_resZ 个候选高度。
+    zs = np.linspace(pca_min[2], pca_max[2], grid_resZ)
+
+    # 对所有局部 X、Y 网格坐标求笛卡尔积，生成二维网格。
+    gx, gy = np.meshgrid(xs, ys, indexing="ij")
+    # 将二维网格整理为形状为 (grid_resX * grid_resY, 2) 的候选 XY 列。
+    candidate_xy = np.stack([gx.ravel(), gy.ravel()], axis=1)
+    # 只取原始点的局部 XY 坐标，用于第一阶段候选列筛选。
+    point_xy = pts_pca[:, :2]
+    # 为原始点的局部 XY 坐标建立二维 KD-tree。
+    tree = cKDTree(point_xy)
+    # 使用两个方向中较大的半宽作为方形邻域的粗查询半径。
+    search_radius = max(half_expand_length, half_expand_width)
+    # 查询每个候选 XY 周围方形范围内的原始点索引；p=np.inf 表示切比雪夫距离。
+    neighbor_lists = tree.query_ball_point(candidate_xy, r=search_radius, p=np.inf)
+
+    # 创建布尔数组，记录每一个候选 XY 列是否通过第一阶段筛选。
+    keep_column = np.zeros(candidate_xy.shape[0], dtype=bool)
+    # 逐个检查候选 XY 列附近的原始点。
+    for idx, neighbor_idx in enumerate(neighbor_lists):
+        # 周围没有任何原始点时，该候选列保持 False 并跳过。
+        if len(neighbor_idx) == 0:
+            continue
+        # 计算邻域原始点与当前候选列在局部 X、Y 方向上的绝对距离。
+        delta = np.abs(point_xy[neighbor_idx] - candidate_xy[idx])
+        # 只要有一个点同时落入 X、Y 半宽范围，就保留当前候选列。
+        keep_column[idx] = np.any(
+            (delta[:, 0] <= half_expand_length) &
+            (delta[:, 1] <= half_expand_width)
+        )
+
+    # 取出第一阶段筛选后允许沿 Z 方向生成补点的 XY 列。
+    valid_xy = candidate_xy[keep_column]
+    # 如果没有任何有效 XY 列，则本次不生成补点。
+    if len(valid_xy) == 0:
+        # 创建形状为 (0, 3) 的空补点数组，保持后续拼接逻辑一致。
+        grid_pts = np.empty((0, 3), dtype=np.float32)
+    else:
+        # 将每个有效 XY 列与所有候选 Z 高度组合，生成三维候选补点。
+        grid_pca = np.stack([
+            # 每个有效局部 X 坐标连续重复 grid_resZ 次。
+            np.repeat(valid_xy[:, 0], grid_resZ),
+            # 每个有效局部 Y 坐标连续重复 grid_resZ 次。
+            np.repeat(valid_xy[:, 1], grid_resZ),
+            # 为每个有效 XY 列依次放入全部候选 Z 高度。
+            np.tile(zs, len(valid_xy)),
+        # 将候选点整理为 (候选点数量, 3)，并转换为 float32。
+        ], axis=1).astype(np.float32)
+
+        # 8.12：逐个候选补点查询同高度层原始点，再判断 X、Y 最近距离。
+        if x_threshold <= 0 or y_threshold <= 0 or z_threshold <= 0:
+            raise ValueError("x_threshold, y_threshold and z_threshold must be positive")
+
+        # 按各方向阈值缩放坐标，将三个独立阈值统一为切比雪夫距离 1。
+        threshold_scale = np.array(
+            [x_threshold, y_threshold, z_threshold], dtype=pts_pca.dtype
+        )
+        scaled_points = pts_pca / threshold_scale
+        scaled_candidates = grid_pca / threshold_scale
+
+        # 只查询每个候选点最近的一个原始点，不再保存范围内的全部邻居索引。
+        candidate_tree = cKDTree(scaled_points)
+        nearest_distance, _ = candidate_tree.query(
+            scaled_candidates,
+            k=1,
+            p=np.inf,
+            distance_upper_bound=1.0,
+            workers=-1,
+        )
+        # 最近切比雪夫距离有限，表示存在一个原始点同时满足 X、Y、Z 三个阈值。
+        keep_point = np.isfinite(nearest_distance)
+        # 每个候选点独立应用判断结果，去除没有通过同高度层 X/Y 检查的点。
+        grid_pca = grid_pca[keep_point]
+        # 将保留下来的补点从局部坐标系转换回世界坐标系。
+        grid_pts = grid_pca @ Vt + clean_centroid
+
+    # 将原始点与过滤后保留的补点合并。
+    new_points = np.vstack([points, grid_pts])
+    # 保留原始颜色，并将所有新增补点标记为红色。
+    new_colors = np.vstack([colors, np.tile([1.0, 0.0, 0.0], (len(grid_pts), 1))])
+    # 保留原始法线，并将新增补点的法线初始化为零向量。
+    new_normals = np.vstack([normals, np.zeros((len(grid_pts), 3))])
+    # 返回合并后的点坐标、颜色和法线。
+    return new_points, new_colors, new_normals
+
+
 def Planefill(points, colors, normals, view_cam, view_depth=20.0, depth_samples=200,
               outer_count_threshold=500, center_ratio=0.5, plane_fill_ratio=0.1):
     depth_step = view_depth / depth_samples
@@ -514,9 +627,27 @@ def main():
     # colmap点降采样
     parser.add_argument("--init_voxel_size", type=float, default=0.0, help="Voxel size for optional initial point cloud downsampling.")
     parser.add_argument("-m", "--model_path", default=None, help="Optional output directory for writing input.ply.")
-    parser.add_argument("--method", type=int, default=0, help="Optional method for add points in .ply.")
+    parser.add_argument("--method", type=int, default=0, help="Add-points method: 0=Simplyfill2, 3=Simplyfill3.")
+    # 8.12：Simplyfill3 的局部 X、Y 距离阈值和 Z 高度层容差。
+    parser.add_argument("--fill_x_threshold", type=float, default=0.1,
+                        help="Maximum local X distance from an original point at the candidate height.")
+    parser.add_argument("--fill_y_threshold", type=float, default=0.1,
+                        help="Maximum local Y distance from an original point at the candidate height.")
+    parser.add_argument("--fill_z_threshold", type=float, default=0.1,
+                        help="Z tolerance used to select original points at each candidate height.")
     parser.add_argument("--trajectory_root", action="store_true",
-                        help="Use the least-variance axis of the camera trajectory as the z/up axis for Simplyfill2.")
+                        help="Use the least-variance camera-trajectory axis for Simplyfill2/Simplyfill3.")
+    # 最后增加一下一直没增加的
+    parser.add_argument("--outlier_nb_points", type=int, default=30,
+                    help="Number of neighbors to consider for outlier removal.")  
+      
+    parser.add_argument("--fill_grid_resX", type=int, default=100,
+                    help="Grid resolution in X direction for fill points.")
+    parser.add_argument("--fill_grid_resY", type=int, default=100,
+                    help="Grid resolution in Y direction for fill points.")
+    parser.add_argument("--fill_grid_resZ", type=int, default=100,
+                    help="Grid resolution in Z direction for fill points.")
+
     args = parser.parse_args()
 
     source_path = os.path.abspath(os.path.expanduser(args.source_path))
@@ -565,7 +696,7 @@ def main():
         scene_diag = float(np.linalg.norm(p_high - p_low))
         radius = scene_diag * 0.01
         print(f"scene diagonal (1-99 percentile): {scene_diag:.3f}, outlier radius: {radius:.3f}")
-        pcd_clean, _ = pcd_o3d.remove_radius_outlier(nb_points=180, radius=radius)      # nb_points=180
+        pcd_clean, _ = pcd_o3d.remove_radius_outlier(nb_points=args.outlier_nb_points, radius=radius)      # nb_points=180
         print(f"radius outlier 去除后点数: {len(pcd_clean.points)} points")
 
         # remove_statistical_outlier: 每个点到最近 nb_neighbors 个邻居的平均距离，
@@ -598,14 +729,35 @@ def main():
                     else:
                         print(f"trajectory_root z/up axis: {trajectory_up_axis}")
                 # grid_resA，grid_resB，grid_resC 分别是沿长轴方向、宽度方向、高度方向的网格分辨率
-                points, colors, normals = Simplyfill2(points, colors, normals, grid_resX=100, grid_resY=100, grid_resZ=100,
+                points, colors, normals = Simplyfill2(points, colors, normals, grid_resX=args.fill_grid_resX, grid_resY=args.fill_grid_resY, grid_resZ=args.fill_grid_resZ,
                                                       up_axis=trajectory_up_axis)
                 input_filled_ply_path = os.path.join(model_path, "input_filled.ply")
                 storePly(input_filled_ply_path, points, colors * 255.0)
                 print(f"wrote input_filled.ply: {input_filled_ply_path}")
                 print(f"填充点云后点数: {points.shape[0]} points")
 
-            # # ============ 用 Planefill2 补平面点 ==============
+            # 8.12：使用 Simplyfill3 过滤 XY 平面上远离原始点的候选补点。
+            elif args.method == 3:
+                trajectory_up_axis = None
+                if args.trajectory_root:
+                    trajectory_up_axis = _trajectory_up_axis(scene_info.train_cameras)
+                    if trajectory_up_axis is None:
+                        print("trajectory_root 启用失败: 训练相机数量少于 3，仍使用点云 PCA 的 z 轴")
+                    else:
+                        print(f"trajectory_root z/up axis: {trajectory_up_axis}")
+                points, colors, normals = Simplyfill3(
+                    points, colors, normals,
+                    grid_resX=args.fill_grid_resX, grid_resY=args.fill_grid_resY, grid_resZ=args.fill_grid_resZ,
+                    up_axis=trajectory_up_axis,
+                    x_threshold=args.fill_x_threshold,
+                    y_threshold=args.fill_y_threshold,
+                    z_threshold=args.fill_z_threshold
+                )
+                input_filled_ply_path = os.path.join(model_path, "input_filled.ply")
+                storePly(input_filled_ply_path, points, colors * 255.0)
+                print(f"wrote input_filled.ply: {input_filled_ply_path}")
+                print(f"Simplyfill3 填充后总点数: {points.shape[0]} points")
+
             # planefill2_points_count = 0
             # planefill2_depths = []
             # for cam_idx, view_cam in enumerate(scene_info.train_cameras):
