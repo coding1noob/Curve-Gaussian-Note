@@ -75,26 +75,81 @@ def render(viewpoint_camera, pc : GaussianCurveModel, pipe, bg_color : torch.Ten
         scales = pc.get_scaling * mask.view(-1, 1)
         opacity = pc.get_opacity * mask.view(-1, 1)
 
-    # If precomputed colors are provided, use them. Otherwise, if it is desired to precompute colors
-    # from SHs in Python, do it. If not, then SH -> RGB conversion will be done by rasterizer.
+    # 注释掉源代码, 修改 curveGS 能适配RGB作监督
+
+    # # 球谐系数初始化，由观察方向计算颜色
+    # shs = None
+    # # Python 已经算好每个高斯的颜色初始化，直接传给 CUDA
+    # colors_precomp = None
+    # # 上面 二者只能使用一个
+    # # override_color 为此函数传入参数。None：使用模型自己的颜色或 SH，非 None：使用调用者提供的颜色
+    # # 目前 CurveGS 最后会覆盖它，所以这个功能实际上失效了
+    # if override_color is None:
+    #     # 判断是否在 Python 中把 SH 转换成 RGB
+    #     if pipe.convert_SHs_python:
+    #         # 在python中求值
+
+    #         # 取得模型的 SH 特征并调整形状，标准 3DGS 中，pc.get_features 通常是：
+    #         # [高斯数量, 每个颜色通道的 SH 系数数量, 3（表示RGB）]
+    #         # transpose(1, 2) 后变成：[P, 3, K]
+    #         shs_view = pc.get_features.transpose(1, 2).view(-1, 3, (pc.max_sh_degree+1)**2)
+    #         # 计算从相机中心指向每个高斯中心的方向，因为 SH 颜色具有视角相关性，所以必须知道观察方向
+    #         dir_pp = (pc.get_xyz - viewpoint_camera.camera_center.repeat(pc.get_features.shape[0], 1))
+    #         # 归一化成单位向量
+    #         dir_pp_normalized = dir_pp/dir_pp.norm(dim=1, keepdim=True)
+    #         # 最后调用 eval_sh() 计算颜色
+    #         # 根据以下内容计算每个高斯在当前观察方向下的颜色：
+    #         # 当前启用的 SH 阶数；
+    #         # 每个高斯的 SH 系数；
+    #         # 相机到高斯的观察方向
+    #         sh2rgb = eval_sh(pc.active_sh_degree, shs_view, dir_pp_normalized)
+    #         # 标准 3DGS 的 SH 表示以 0.5 为颜色中心，因此下一行要加 0.5
+    #         colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
+    #     else:
+    #         # 不在 Python 中求值，把 SH 系数传给 CUDA
+            
+    #         # 是否将 SH 的 DC 分量和高阶分量分开传递。这一般是某些稀疏优化器或新版 rasterizer 的接口
+    #         if separate_sh:
+    #             dc, shs = pc.get_features_dc, pc.get_features_rest
+    #         else:
+    #             shs = pc.get_features
+    # else:
+    #     # override_color存在, 则使用外部覆盖颜色
+    #     colors_precomp = override_color
+    # # 上面其实curveGS都没生效, 下面两行才是真正运行的地方
+    # shs = None
+    # colors_precomp = torch.ones(means3D.shape[0], 1).cuda()
+
+    # 修改后:
     shs = None
-    colors_precomp = None
     if override_color is None:
-        if pipe.convert_SHs_python:
-            shs_view = pc.get_features.transpose(1, 2).view(-1, 3, (pc.max_sh_degree+1)**2)
-            dir_pp = (pc.get_xyz - viewpoint_camera.camera_center.repeat(pc.get_features.shape[0], 1))
-            dir_pp_normalized = dir_pp/dir_pp.norm(dim=1, keepdim=True)
-            sh2rgb = eval_sh(pc.active_sh_degree, shs_view, dir_pp_normalized)
-            colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
-        else:
-            if separate_sh:
-                dc, shs = pc.get_features_dc, pc.get_features_rest
-            else:
-                shs = pc.get_features
+    # 兼容原始 CurveGS：所有高斯暂时渲染为白色
+        colors_precomp = torch.ones(
+            (means3D.shape[0], 3), device=means3D.device, dtype=means3D.dtype
+        )
     else:
         colors_precomp = override_color
-    shs = None
-    colors_precomp = torch.ones(means3D.shape[0], 1).cuda()
+
+        # 如果 colors_precomp 仅有一个维度, 不是[P,3], 比如[3], 即所有高斯共享一个RGB颜色, 则扩展
+        if colors_precomp.ndim == 1:
+            # unsqueeze(0) 在第 0 维增加一个维度：[3] -> [1, 3]
+            # expand(means3D.shape[0], -1) 把这一个颜色扩展给所有高斯。
+            # 如果有 P=100 个高斯：[1, 3] -> [100, 3]
+            colors_precomp = colors_precomp.unsqueeze(0).expand(means3D.shape[0], -1)
+
+        if colors_precomp.shape != (means3D.shape[0], 3):
+            raise ValueError(
+                "override_color must have shape [3] or "
+                f"[{means3D.shape[0]}, 3], got {tuple(colors_precomp.shape)}"
+            )
+        
+        colors_precomp = colors_precomp.to(
+            device=means3D.device,
+            dtype=means3D.dtype,
+        ).contiguous()
+                
+
+
     global_normal = pc.get_main_axis(viewpoint_camera)
     local_normal = global_normal @ viewpoint_camera.world_view_transform[:3, :3]
     # pts_in_cam = means3D @ viewpoint_camera.world_view_transform[:3, :3] + viewpoint_camera.world_view_transform[3, :3]
@@ -104,30 +159,47 @@ def render(viewpoint_camera, pc : GaussianCurveModel, pipe, bg_color : torch.Ten
     input_all_map[:, 3] = 1.0
 
 
-    # Rasterize visible Gaussians to image, obtain their radii (on screen). 
-    if separate_sh:
-        rendered_image, radii, depth_image, out_all_map = rasterizer(
-            means3D = means3D,
-            means2D = means2D,
-            dc = dc,
-            shs = shs,
-            colors_precomp = colors_precomp,
-            opacities = opacity,
-            scales = scales,
-            rotations = rotations,
-            all_map=input_all_map,
-            cov3D_precomp = cov3D_precomp)
-    else:
-        rendered_image, radii, depth_image, out_all_map = rasterizer(
-            means3D = means3D,
-            means2D = means2D,
-            shs = shs,
-            colors_precomp = colors_precomp,
-            opacities = opacity,
-            scales = scales,
-            rotations = rotations,
-            all_map=input_all_map,
-            cov3D_precomp = cov3D_precomp)
+
+    # 去掉传入不存在的 dc= 参数
+    # if separate_sh:
+    #     rendered_image, radii, depth_image, out_all_map = rasterizer(
+    #         means3D = means3D,
+    #         means2D = means2D,
+    #         dc = dc,
+    #         shs = shs,
+    #         colors_precomp = colors_precomp,
+    #         opacities = opacity,
+    #         scales = scales,
+    #         rotations = rotations,
+    #         all_map=input_all_map,
+    #         cov3D_precomp = cov3D_precomp)
+    # else:
+    #     rendered_image, radii, depth_image, out_all_map = rasterizer(
+    #         means3D = means3D,
+    #         means2D = means2D,
+    #         shs = shs,
+    #         colors_precomp = colors_precomp,
+    #         opacities = opacity,
+    #         scales = scales,
+    #         rotations = rotations,
+    #         all_map=input_all_map,
+    #         cov3D_precomp = cov3D_precomp)
+
+    # 修改后:
+    rendered_image, radii, depth_image, out_all_map = rasterizer(
+        means3D=means3D,
+        means2D=means2D,
+        shs=None,
+        colors_precomp=colors_precomp,
+        opacities=opacity,
+        scales=scales,
+        rotations=rotations,
+        all_map=input_all_map,
+        cov3D_precomp=cov3D_precomp,
+    )
+
+
+
         
     # Apply exposure to rendered image (training only)
     if use_trained_exp:

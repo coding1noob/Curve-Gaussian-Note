@@ -183,13 +183,28 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
 
         # 4. 图像监督 Loss：这里是把渲染出的线条外观和输入边缘图比较。
         # 如果数据集使用的是 PidiNet / DexiNed 边缘图，这里就是直接监督信号。
-        gt_image = viewpoint_cam.original_image.cuda()
-        Ll1 = edge_aware_loss(image, gt_image[:1, ...])
+        # gt_image = viewpoint_cam.original_image.cuda()
+        # Ll1 = edge_aware_loss(image, gt_image[:1, ...])
         
+        # if FUSED_SSIM_AVAILABLE:
+        #     ssim_value = fused_ssim(image.unsqueeze(0), gt_image[:1, ...].unsqueeze(0))
+        # else:
+        #     ssim_value = ssim(image, gt_image[:1, ...])
+
+        # 新改动兼容三通道, 因为 image 变成三通道了
+        gt_image = viewpoint_cam.original_image.cuda()
+        # :1表示取[0,1), ...表示后面所有维度都完整保留。它等价于：gt_image[:1, :, :]
+        # .repeat(3, 1, 1)表示第0维复制3次, 第1维和第2维不变, 这样就把单通道的 gt_image 扩展成了三通道
+        gt_edge =  gt_image[:1, ...].repeat(3, 1, 1)
+        Ll1 = edge_aware_loss(image, gt_edge)
+
         if FUSED_SSIM_AVAILABLE:
-            ssim_value = fused_ssim(image.unsqueeze(0), gt_image[:1, ...].unsqueeze(0))
+            ssim_value = fused_ssim(
+                image.unsqueeze(0),
+                gt_edge.unsqueeze(0),
+            )
         else:
-            ssim_value = ssim(image, gt_image[:1, ...])
+            ssim_value = ssim(image, gt_edge)
 
         loss = opt.lambda_mse * ((1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value))
 

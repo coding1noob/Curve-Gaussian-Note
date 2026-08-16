@@ -180,3 +180,42 @@ opacity = 0.64392
 
 --mask_threshold 0.02
 控制 mask 剪枝/修剪。mask 低于阈值的曲线采样点会被认为不可靠，后期会被剪掉或切掉。
+
+# 修改添加RGB
+
+1. 
+先修改submodules/diff-cur-rasterization/cuda_rasterizer/config.h，里面把光栅器单通道改为三通道
+
+完成后可以用下面的命令确认差异，但不要安装：
+git diff -- submodules/diff-cur-rasterization/cuda_rasterizer/config.h
+
+2. 
+
+第二步修改 CurveGS 内部 RGB 缓冲区大小。
+打开 submodules/diff-cur-rasterization/cuda_rasterizer/rasterizer_impl.cu
+
+obtain(chunk, geom.rgb, P, 128);
+改成：
+obtain(chunk, geom.rgb, P * NUM_CHANNELS, 128);
+
+3. 
+然后修改 Python renderer，gaussian_renderer/__init__.py 中有关 colors_precomp 的逻辑,
+colors_precomp 可以理解为：已经由 Python 计算好的、每个高斯的直接颜色。
+它是每个高斯传给光栅化器的颜色输入，形状通常是：[P, 3]. 修改完其变为:
+不使用 SH, 每个高斯使用三个通道, 每个高斯 RGB 可以训练
+
+接着修改同一文件的 rasterizer 调用
+
+4. 
+修改 train.py, 让 让当前灰度边缘监督适配三通道渲染输出 
+
+完成这一步后，底层三通道兼容链路就基本接通了。下一步我们会重新编译 diff-cur-rasterization，先验证“不传 --use_RGB”时三通道白线能正常完成前向和反向，再开始加入可训练 RGB 参数
+
+5. 
+重新编译
+
+python -m pip install \
+--force-reinstall \
+--no-deps \
+--no-build-isolation \
+./submodules/diff-cur-rasterization
