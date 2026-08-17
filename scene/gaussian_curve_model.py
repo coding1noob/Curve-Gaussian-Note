@@ -72,6 +72,98 @@ class GaussianCurveModel(GaussianModel):
         self._curve_points = torch.empty(0)
         self.is_bezier = torch.empty(0)
 
+    # 新增 capture 和 restore 方法，用于保存和恢复模型状态
+    def capture(self):
+        return {
+            "version": 1,
+            "active_sh_degree": self.active_sh_degree,
+            "n_gaussians": self.n_gaussians,
+            "use_RGB": self.use_RGB,
+            "curve_points": self._curve_points,
+            "features_dc": self._features_dc,
+            "features_rest": self._features_rest,
+            "opacity": self._opacity,
+            "width": self._width,
+            "mask": self._mask,
+            "logit_rgb": self._logit_rgb,
+            "is_bezier": self.is_bezier,
+            "max_radii2D": self.max_radii2D,
+            "xyz_gradient_accum": self.xyz_gradient_accum,
+            "denom": self.denom,
+            "optimizer": self.optimizer.state_dict(),
+            "spatial_lr_scale": self.spatial_lr_scale,
+        }
+    def restore(self, model_args, training_args):
+        if not isinstance(model_args, dict):
+            raise ValueError(
+                "Unsupported old CurveGS checkpoint format"
+            )
+
+        if model_args.get("version") != 1:
+            raise ValueError(
+                f"Unsupported checkpoint version: "
+                f"{model_args.get('version')}"
+            )
+
+        checkpoint_use_RGB = model_args["use_RGB"]
+        checkpoint_n_gaussians = model_args["n_gaussians"]
+
+        if checkpoint_use_RGB != self.use_RGB:
+            raise ValueError(
+                "Checkpoint RGB mode does not match the current command. "
+                f"checkpoint use_RGB={checkpoint_use_RGB}, "
+                f"current use_RGB={self.use_RGB}"
+            )
+
+        if checkpoint_n_gaussians != self.n_gaussians:
+            raise ValueError(
+                "Checkpoint n_gaussians does not match the current command. "
+                f"checkpoint n_gaussians={checkpoint_n_gaussians}, "
+                f"current n_gaussians={self.n_gaussians}"
+            )
+
+        self.active_sh_degree = model_args["active_sh_degree"]
+        self.spatial_lr_scale = model_args["spatial_lr_scale"]
+
+        self._curve_points = nn.Parameter(
+            model_args["curve_points"].requires_grad_(True)
+        )
+        self._features_dc = nn.Parameter(
+            model_args["features_dc"].requires_grad_(True)
+        )
+        self._features_rest = nn.Parameter(
+            model_args["features_rest"].requires_grad_(True)
+        )
+        self._opacity = nn.Parameter(
+            model_args["opacity"].requires_grad_(True)
+        )
+        self._width = nn.Parameter(
+            model_args["width"].requires_grad_(True)
+        )
+        self._mask = nn.Parameter(
+            model_args["mask"].requires_grad_(True)
+        )
+        self._logit_rgb = nn.Parameter(
+            model_args["logit_rgb"].requires_grad_(True)
+        )
+
+        self.is_bezier = model_args["is_bezier"]
+
+        # 根据恢复出的模型参数重新创建 optimizer。
+        self.training_setup(training_args)
+
+        self.max_radii2D = model_args["max_radii2D"]
+        self.xyz_gradient_accum = model_args["xyz_gradient_accum"]
+        self.denom = model_args["denom"]
+
+        self.optimizer.load_state_dict(
+            model_args["optimizer"]
+        )
+
+        # _xyz、_rotation 和 _scaling 都是由曲线参数推导出来的。
+        self.prepare_scaling_rot()
+
+
     @property
     def get_curve_points(self):
         return self._curve_points

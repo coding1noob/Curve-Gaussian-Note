@@ -394,3 +394,8 @@ prune_curves()
         ↓
 densification_postfix()
     把合并后的新曲线正式加入模型
+
+14. 
+带着use_RGB试运行
+
+然后 scene/gaussian_curve_model.py 中 GaussianCurveModel 类添加 capture 和 restore 函数, 就会优先使用子类的函数, 像相当于对函数进行重写
