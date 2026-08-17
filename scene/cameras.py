@@ -19,7 +19,8 @@ import cv2
 class Camera(nn.Module):
     def __init__(self, colmap_id, R, T, FoVx, FoVy, image, gt_alpha_mask,
                  image_name, uid, trans=np.array([0.0, 0.0, 0.0]), scale=1.0,  
-                 data_device="cuda"
+                 data_device="cuda",
+                 original_rgb=None, edge_mask=None
                  ):
         super(Camera, self).__init__()
 
@@ -38,10 +39,30 @@ class Camera(nn.Module):
             print(f"[Warning] Custom device {data_device} failed, fallback to default cuda device")
             self.data_device = torch.device("cuda")
 
+        # .clamp(最小值, 最大值)限制在指定范围内
         self.original_image = image.clamp(0.0, 1.0).to(self.data_device)
 
         self.image_width = self.original_image.shape[2]
         self.image_height = self.original_image.shape[1]
+
+        # 新添加, RGB 模式使用的原始彩色图和独立边缘 mask。
+        # 默认模式下二者均为 None，不额外占用显存。
+        self.original_rgb = (
+            original_rgb.clamp(0.0, 1.0).to(self.data_device)
+            if original_rgb is not None
+            else None
+        )
+        self.edge_mask = (
+            edge_mask.clamp(0.0, 1.0).to(self.data_device)
+            if edge_mask is not None
+            else None
+        )
+
+        # 上面三个变量各有不同用途：
+        # original_image  原有边缘图，保持旧训练逻辑
+        # original_rgb    原始彩色图，RGB loss 使用
+        # edge_mask       单通道软边缘 mask，限定 RGB loss 区域
+
 
         if gt_alpha_mask is not None:
             # self.original_image *= gt_alpha_mask.to(self.data_device)

@@ -219,3 +219,178 @@ python -m pip install \
 --no-deps \
 --no-build-isolation \
 ./submodules/diff-cur-rasterization
+
+然后试运行:
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 CUDA_LAUNCH_BLOCKING=1 python train.py \
+-s /data1/jhc/datasets/virtual_net2 \
+-m output/virtual_net2_8.12_test \
+--eval \
+--iterations 2 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 10 \
+--fill_y_threshold 0.5 \
+--fill_grid_resX 200 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 50 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--quiet
+
+6. 
+arguments/__init__.py 增加传入参数 --use_RGB
+
+然后他在 train.py 中：
+lp = ModelParams(parser)
+负责注册参数；在 train.py 中：
+training(lp.extract(args), ...)
+lp.extract(args) 会创建传入 training() 的 dataset 对象。由于 use_RGB 是 ModelParams 的成员，所以后续在训练函数中可以直接读取
+
+7. 
+改数据读取层
+scene/dataset_readers.py 中的 CameraInfo 类
+以及
+readColmapSceneInfo 函数 中的 readColmapCameras 函数(也在 scene/dataset_readers.py 里面)
+
+然后检查:
+python - <<'PY'
+from scene.dataset_readers import readColmapSceneInfo
+
+scene_info = readColmapSceneInfo(
+    "/home/gamma/storage_of_code/habitat-sim/camera_output/formal3/colmap",
+    "images",
+    "",
+    False,
+    False,
+    detector="PidiNet",
+)
+
+cam = scene_info.train_cameras[0]
+print("RGB:", cam.rgb_image_path)
+print("edge:", cam.edge_image_path)
+print("same RGB path:", cam.rgb_image_path == cam.image_path)
+print("RGB exists:", __import__("os").path.exists(cam.rgb_image_path))
+print("edge exists:", __import__("os").path.exists(cam.edge_image_path))
+PY
+
+8. 
+
+在 scene/cameras.py 中的 Camera类 构造函数需要加入
+original_rgb
+edge_mask
+即加入Camera类, 才能给之后的训练调用
+
+然后在 utils/camera_utils.py 中 loadCam 函数
+
+**整条调用链:**
+train.py
+  ↓
+ModelParams / 命令行参数
+  ↓
+training(dataset, ...)
+  ↓
+Scene(dataset, gaussians)
+  ↓
+dataset_readers.py
+  ↓
+CameraInfo
+  ↓
+camera_utils.py::loadCam()
+  ↓
+cameras.py::Camera
+  ↓
+scene.getTrainCameras()
+  ↓
+viewpoint_cam
+  ↓
+train.py 读取监督数据
+
+9. 
+给 GaussianCurveModel 增加“每个高斯的基础 RGB 参数”
+
+scene/gaussian_curve_model.py
+中 GaussianCurveModel 类里面添加
+开启参数 self.use_RGB 用于传递参数, self._logit_rgb (形状是[N, M, 3], 含义是
+N：曲线数量
+M：每条曲线的采样高斯数量
+3：RGB 三个通道)
+
+同时模仿
+@property
+def get_xyz(self)
+创建获取rgb属性的函数
+
+然后在 create_from_pcd 函数中
+
+上面的改动都会通过
+gaussians = GaussianCurveModel(dataset.sh_degree, dataset.n_gaussians, opt.optimizer_type, use_RGB=dataset.use_RGB)
+和train.py连接
+
+10. 
+把 _logit_rgb 加入 GaussianCurveModel.training_setup() 的优化器参数组
+
+scene/gaussian_curve_model.py 中 training_setup 函数
+加入
+l = [
+        {'params': [self._features_dc], 'lr': training_args.feature_lr, "name": "f_dc"},
+    ]
+这样的参数表, 用 l.append 添加
+
+添加时需要添加其对应的学习率 training_args.rgb_lr, 所以需要初始化学习率变量
+
+arguments/__init__.py 中 OptimizationParams 类,
+在其中加入：
+self.rgb_lr = 0.01
+
+11. 
+改 train.py, 增加 loss 权重
+
+先在 arguments/__init__.py 增加权重
+
+然后再在 train.py 中修改 (此处新增了 Loss_part 函数)
+
+12. 
+让曲线分裂时同步复制 RGB 参数
+
+修改 scene/gaussian_curve_model.py 里面的 densify_and_split_curve 函数
+(此函数和 train.py 的调用链:
+train.py 中的 densify_and_prune -> densify_and_split_curve )
+
+完成后，曲线分裂产生的新曲线就会继承原曲线的 RGB
+
+13. 
+让曲线合并时同步生成 RGB 参数
+
+修改 scene/gaussian_curve_model.py merge_curves 函数
+
+
+补充说明 densification_postfix 函数的作用
+
+以曲线分裂为例：
+densify_and_prune()
+    找出哪些曲线需要分裂
+        ↓
+densify_and_split_curve()
+    用 De Casteljau 算法计算左右两条新曲线
+    准备新曲线的 opacity、width、mask、RGB 等参数
+        ↓
+densification_postfix()
+    把新曲线和新参数正式加入模型及 optimizer
+        ↓
+prune_curves()
+    删除原来的父曲线
+
+合并时也是类似的：
+merge_curves()
+    找出需要合并的曲线
+    拟合出合并后的新曲线
+        ↓
+prune_curves()
+    删除参与合并的旧曲线
+        ↓
+densification_postfix()
+    把合并后的新曲线正式加入模型

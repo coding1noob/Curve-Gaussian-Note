@@ -41,6 +41,36 @@ def loadCam(args, id, cam_info, resolution_scale):
         scale = float(global_down) * float(resolution_scale)
         resolution = (int(orig_w / scale), int(orig_h / scale))
 
+    # 新加入
+    original_rgb = None
+    edge_mask = None
+
+    if getattr(args, "use_RGB", False):
+        rgb_image_path = getattr(cam_info, "rgb_image_path", "")
+        edge_image_path = getattr(cam_info, "edge_image_path", "")
+
+        if not rgb_image_path or not os.path.isfile(rgb_image_path):
+            raise FileNotFoundError(
+                f"RGB image does not exist: {rgb_image_path}"
+            )
+        if not edge_image_path or not os.path.isfile(edge_image_path):
+            raise FileNotFoundError(
+                f"Edge mask does not exist: {edge_image_path}"
+            )
+
+        # convert("RGB") 强制得到三个颜色通道。
+        original_rgb = PILtoTorch(
+            Image.open(rgb_image_path).convert("RGB"),
+            resolution,
+        )
+
+        # convert("L") 强制得到一个灰度通道，并保留 0~1 的软置信度。
+        edge_mask = PILtoTorch(
+            Image.open(edge_image_path).convert("L"),
+            resolution,
+        )
+
+
     if len(cam_info.image.split()) > 3:
         import torch
         resized_image_rgb = torch.cat([PILtoTorch(im, resolution) for im in cam_info.image.split()[:3]], dim=0)
@@ -61,10 +91,21 @@ def loadCam(args, id, cam_info, resolution_scale):
             resized_image_rgb = resized_image_rgb * loaded_mask
         gt_image = resized_image_rgb
 
-    return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T,
-                  FoVx=cam_info.FovX, FoVy=cam_info.FovY,
-                  image=gt_image, gt_alpha_mask=loaded_mask,
-                  image_name=cam_info.image_name, uid=id, data_device=args.data_device)
+    return Camera(
+        colmap_id=cam_info.uid,
+        R=cam_info.R,
+        T=cam_info.T,
+        FoVx=cam_info.FovX,
+        FoVy=cam_info.FovY,
+        image=gt_image,
+        gt_alpha_mask=loaded_mask,
+        image_name=cam_info.image_name,
+        uid=id,
+        data_device=args.data_device,
+        original_rgb=original_rgb,
+        edge_mask=edge_mask,
+    )
+
 
 
 def cameraList_from_camInfos(cam_infos, resolution_scale, args, is_nerf_synthetic, is_test_dataset):

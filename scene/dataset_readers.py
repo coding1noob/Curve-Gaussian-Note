@@ -38,6 +38,8 @@ class CameraInfo(NamedTuple):
     height: int
     is_test: bool
     K: np.array=None
+    rgb_image_path: str = ""
+    edge_image_path: str = ""
 
 
 class SceneInfo(NamedTuple):
@@ -108,17 +110,31 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, depths_params, images_fold
             except:
                 print("\n", key, "not found in depths_params")
 
+
+        # 此处增添读取边缘图
         image_path = os.path.join(images_folder, extr.name)
+        rgb_image_path = image_path
+        # image 字段继续读取旧的边缘图，保证非 RGB 模式兼容。
         if detector == 'DexiNed':
             edge_path = image_path.replace('images', 'edge_DexiNed')
-            edge_path = edge_path.replace('.jpg', '.png')
+            edge_path = edge_path.replace('.jpg', '.png').replace('.JPG', '.png')
             image = Image.open(edge_path)
-            # from PIL import ImageOps
-            # image = ImageOps.invert(image)
         else:
             edge_path = image_path.replace('images', 'edge_PidiNet')
             edge_path = edge_path.replace('.jpg', '.png').replace('.JPG', '.png')
             image = Image.open(edge_path)
+
+        # 旧代码注释
+        # if detector == 'DexiNed':
+        #     edge_path = image_path.replace('images', 'edge_DexiNed')
+        #     edge_path = edge_path.replace('.jpg', '.png')
+        #     image = Image.open(edge_path)
+        #     # from PIL import ImageOps
+        #     # image = ImageOps.invert(image)
+        # else:
+        #     edge_path = image_path.replace('images', 'edge_PidiNet')
+        #     edge_path = edge_path.replace('.jpg', '.png').replace('.JPG', '.png')
+        #     image = Image.open(edge_path)
 
         image_name = extr.name.replace('.jpg', '.png')
         depth_path = os.path.join(depths_folder, f"{extr.name[:-n_remove]}.png") if depths_folder != "" else ""
@@ -132,7 +148,9 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, depths_params, images_fold
 
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image, depth_params=depth_params,
                               image_path=image_path, image_name=image_name, depth_path=depth_path,
-                              width=width, height=height, is_test=image_name in test_cam_names_list, K=K)
+                              width=width, height=height, is_test=image_name in test_cam_names_list, K=K,
+                              rgb_image_path=rgb_image_path,
+                              edge_image_path=edge_path)
         cam_infos.append(cam_info)
 
     sys.stdout.write('\n')

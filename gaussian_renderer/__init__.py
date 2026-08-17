@@ -122,31 +122,40 @@ def render(viewpoint_camera, pc : GaussianCurveModel, pipe, bg_color : torch.Ten
 
     # 修改后:
     shs = None
-    if override_color is None:
-    # 兼容原始 CurveGS：所有高斯暂时渲染为白色
-        colors_precomp = torch.ones(
-            (means3D.shape[0], 3), device=means3D.device, dtype=means3D.dtype
-        )
-    else:
+
+    if override_color is not None:
+        # 调用者显式传入的颜色具有最高优先级。
         colors_precomp = override_color
-
-        # 如果 colors_precomp 仅有一个维度, 不是[P,3], 比如[3], 即所有高斯共享一个RGB颜色, 则扩展
-        if colors_precomp.ndim == 1:
-            # unsqueeze(0) 在第 0 维增加一个维度：[3] -> [1, 3]
-            # expand(means3D.shape[0], -1) 把这一个颜色扩展给所有高斯。
-            # 如果有 P=100 个高斯：[1, 3] -> [100, 3]
-            colors_precomp = colors_precomp.unsqueeze(0).expand(means3D.shape[0], -1)
-
-        if colors_precomp.shape != (means3D.shape[0], 3):
-            raise ValueError(
-                "override_color must have shape [3] or "
-                f"[{means3D.shape[0]}, 3], got {tuple(colors_precomp.shape)}"
-            )
-        
-        colors_precomp = colors_precomp.to(
+    elif pc.use_RGB:
+        # 每个采样高斯具有一个可训练的直接 RGB。
+        colors_precomp = pc.get_rgb
+    else:
+        # 兼容原始 CurveGS：所有高斯渲染为白色。
+        colors_precomp = torch.ones(
+            (means3D.shape[0], 3),
             device=means3D.device,
             dtype=means3D.dtype,
-        ).contiguous()
+        )
+
+    # 允许外部传入一个所有高斯共享的 RGB，例如 [1, 0, 0]。
+    if colors_precomp.ndim == 1:
+        colors_precomp = colors_precomp.unsqueeze(0).expand(
+            means3D.shape[0],
+            -1,
+        )
+
+    if colors_precomp.shape != (means3D.shape[0], 3):
+        raise ValueError(
+            "colors_precomp must have shape [3] or "
+            f"[{means3D.shape[0]}, 3], "
+            f"got {tuple(colors_precomp.shape)}"
+        )
+
+    colors_precomp = colors_precomp.to(
+        device=means3D.device,
+        dtype=means3D.dtype,
+    ).contiguous()
+
                 
 
 

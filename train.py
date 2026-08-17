@@ -114,6 +114,64 @@ def save_curve_gaussians_for_3dgs_note(gaussians, path, sh_degree=3):
     PlyData([PlyElement.describe(elements, "vertex")], text=False).write(path)
     print(f"Saved {path} for 3DGS_NOTE initialization.")
 
+def Loss_part(dataset, viewpoint_cam, image, rend_alpha, iteration, opt):
+    if dataset.use_RGB:
+        if viewpoint_cam.original_rgb is None:
+            raise RuntimeError(
+                "RGB mode requires viewpoint_cam.original_rgb"
+            )
+        if viewpoint_cam.edge_mask is None:
+            raise RuntimeError(
+                "RGB mode requires viewpoint_cam.edge_mask"
+            )
+
+        gt_rgb = viewpoint_cam.original_rgb
+        edge_mask = viewpoint_cam.edge_mask
+
+        # 几何监督：alpha 应该接近输入边缘 mask。
+        geometry_loss = torch.abs(rend_alpha - edge_mask).mean()
+
+        # RGB 监督只发生在边缘区域。
+        rgb_mask = edge_mask.expand_as(image)
+        rgb_error = torch.abs(image - gt_rgb)
+
+        rgb_loss = (
+            (rgb_error * rgb_mask).sum()
+            / rgb_mask.sum().clamp_min(1e-6)
+        )
+
+        # 让 RGB loss 从 0 逐渐增加到完整权重。
+        rgb_warmup = min(
+            1.0,
+            iteration / max(opt.rgb_warmup, 1),
+        )
+
+        Ll1 = geometry_loss
+        loss = (
+            opt.lambda_mse * geometry_loss
+            + opt.lambda_rgb * rgb_warmup * rgb_loss
+        )
+    else:
+        # 保持原来的非 RGB 模式。
+        # 新改动兼容三通道, 因为 image 变成三通道了
+        gt_image = viewpoint_cam.original_image.cuda()
+        # :1表示取[0,1), ...表示后面所有维度都完整保留。它等价于：gt_image[:1, :, :]
+        # .repeat(3, 1, 1)表示第0维复制3次, 第1维和第2维不变, 这样就把单通道的 gt_image 扩展成了三通道
+        gt_edge =  gt_image[:1, ...].repeat(3, 1, 1)
+        Ll1 = edge_aware_loss(image, gt_edge)
+
+        if FUSED_SSIM_AVAILABLE:
+            ssim_value = fused_ssim(
+                image.unsqueeze(0),
+                gt_edge.unsqueeze(0),
+            )
+        else:
+            ssim_value = ssim(image, gt_edge)
+
+        loss = opt.lambda_mse * ((1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value))
+
+    return loss, Ll1
+
 def training(dataset, opt, pipe, testing_iterations, saving_iterations,
              checkpoint_iterations, checkpoint, debug_from):
 
@@ -123,7 +181,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
     # 1. 初始化训练对象：创建输出、曲线高斯模型、场景、优化器，并可选恢复 checkpoint。
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
-    gaussians = GaussianCurveModel(dataset.sh_degree, dataset.n_gaussians, opt.optimizer_type)
+    gaussians = GaussianCurveModel(dataset.sh_degree, dataset.n_gaussians, opt.optimizer_type, use_RGB=dataset.use_RGB)
     scene = Scene(dataset, gaussians)
     gaussians.training_setup(opt)
     if checkpoint:
@@ -178,10 +236,20 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
         render_pkg = render(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=dataset.train_test_exp,
                             separate_sh=SPARSE_ADAM_AVAILABLE,
                             use_mask=iteration>=opt.densify_until_iter, mask_thr=opt.mask_threshold)
-        image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], \
-            render_pkg["visibility_filter"], render_pkg["radii"]
+        # 旧代码注释
+        # image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], \
+        #     render_pkg["visibility_filter"], render_pkg["radii"]
+        image = render_pkg["render"]
+        viewspace_point_tensor = render_pkg["viewspace_points"]
+        visibility_filter = render_pkg["visibility_filter"]
+        radii = render_pkg["radii"]
+        # [1, H, W], 表示当前视角下每个像素被曲线高斯覆盖的程度
+        rend_alpha = render_pkg["rend_alpha"]
+
 
         # 4. 图像监督 Loss：这里是把渲染出的线条外观和输入边缘图比较。
+        
+        # 旧代码
         # 如果数据集使用的是 PidiNet / DexiNed 边缘图，这里就是直接监督信号。
         # gt_image = viewpoint_cam.original_image.cuda()
         # Ll1 = edge_aware_loss(image, gt_image[:1, ...])
@@ -191,22 +259,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
         # else:
         #     ssim_value = ssim(image, gt_image[:1, ...])
 
-        # 新改动兼容三通道, 因为 image 变成三通道了
-        gt_image = viewpoint_cam.original_image.cuda()
-        # :1表示取[0,1), ...表示后面所有维度都完整保留。它等价于：gt_image[:1, :, :]
-        # .repeat(3, 1, 1)表示第0维复制3次, 第1维和第2维不变, 这样就把单通道的 gt_image 扩展成了三通道
-        gt_edge =  gt_image[:1, ...].repeat(3, 1, 1)
-        Ll1 = edge_aware_loss(image, gt_edge)
+        # 新代码, 用新函数
+        # loss: 包含 RGB、几何和后续正则项的总 loss. Ll1: 传给日志系统的基础图像/几何 loss
+        loss, Ll1 = Loss_part(dataset, viewpoint_cam, image, rend_alpha, iteration, opt)
 
-        if FUSED_SSIM_AVAILABLE:
-            ssim_value = fused_ssim(
-                image.unsqueeze(0),
-                gt_edge.unsqueeze(0),
-            )
-        else:
-            ssim_value = ssim(image, gt_edge)
-
-        loss = opt.lambda_mse * ((1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value))
 
         # 5. 正则项：约束 mask、opacity、曲线平滑度、宽度和端点连接关系。
         if iteration>=opt.densify_until_iter:
