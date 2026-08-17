@@ -399,3 +399,8 @@ densification_postfix()
 带着use_RGB试运行
 
 然后 scene/gaussian_curve_model.py 中 GaussianCurveModel 类添加 capture 和 restore 函数, 就会优先使用子类的函数, 像相当于对函数进行重写
+
+15. 
+额外导出带训练颜色的 curve_3dgs_init_RGB.ply
+
+train.py 中 save_curve_gaussians_for_3dgs_note函数 添加传入参数 rgb

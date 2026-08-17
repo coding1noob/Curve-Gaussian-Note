@@ -41,7 +41,7 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 CUDA_LAUNCH_BLOCKING=1 pytho
 /data1/jhc/datasets/virtual_net2 \
 -m output/virtual_net2_8.12_test2 \
 --eval \
---iterations 200 \
+--iterations 300 \
 --start_checkpoint output/virtual_net2_8.12_test2/chkpnt200.pth \
 --fill_method simplefill3 \
 --trajectory_root \

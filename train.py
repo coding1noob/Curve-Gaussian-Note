@@ -74,17 +74,36 @@ def _inverse_sigmoid_np(x):
 
 
 @torch.no_grad()
-def save_curve_gaussians_for_3dgs_note(gaussians, path, sh_degree=3):
+def save_curve_gaussians_for_3dgs_note(gaussians, path, sh_degree=3, rgb=None):
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
     # 取出当前训练完成后的曲线高斯中心点，作为后续 3DGS_NOTE 的几何初始化。
     xyz = gaussians.get_xyz.detach().cpu().numpy().astype(np.float32)
     normals = np.zeros_like(xyz, dtype=np.float32)
 
-    # CurveGaussian 更偏几何先验，颜色本身没有被 RGB 图像监督训练。
-    # 所以这里输出中性灰的 SH 初值，让 3DGS_NOTE 后续重新从图像学习高保真颜色。
-    neutral_rgb = torch.full((xyz.shape[0], 3), 0.5, dtype=torch.float32, device="cuda")
-    f_dc = RGB2SH(neutral_rgb).detach().cpu().numpy().astype(np.float32)
+    if rgb is None:
+        # 原始导出保持中性灰，不改变 curve_3dgs_init.ply 的行为。
+        rgb = torch.full(
+            (xyz.shape[0], 3),
+            0.5,
+            dtype=torch.float32,
+            device=gaussians.get_xyz.device,
+        )
+    else:
+        if rgb.shape != (xyz.shape[0], 3):
+            raise ValueError(
+                "Export RGB must have shape "
+                f"[{xyz.shape[0]}, 3], got {tuple(rgb.shape)}"
+            )
+
+        rgb = rgb.to(
+            device=gaussians.get_xyz.device,
+            dtype=torch.float32,
+        ).clamp(0.0, 1.0)
+
+    # 标准 3DGS 用零阶 SH 的 DC 属性保存基础 RGB。
+    f_dc = RGB2SH(rgb).detach().cpu().numpy().astype(np.float32)
+
     # 高阶 SH 系数直接置零，避免把 CurveGaussian 的边缘风格错误带到 3DGS_NOTE 里。
     f_rest = np.zeros((xyz.shape[0], 3 * ((sh_degree + 1) ** 2 - 1)), dtype=np.float32)
 
@@ -493,6 +512,19 @@ def extract_curves(gaussians, opt, scene, simple=False):
         # 这样后面可以把 CurveGaussian 的几何结构和 COLMAP 原始点云合并训练。
         curve_init_ply_path = os.path.join(scene.model_path, "curve_3dgs_init.ply")
         save_curve_gaussians_for_3dgs_note(gaussians, curve_init_ply_path, sh_degree=3)
+
+        # 传 --use_RGB 则多生成一个 curve_3dgs_init_RGB.ply 文件
+        if gaussians.use_RGB:
+            rgb_init_ply_path = os.path.join(
+                scene.model_path,
+                "curve_3dgs_init_RGB.ply",
+            )
+            save_curve_gaussians_for_3dgs_note(
+                gaussians,
+                rgb_init_ply_path,
+                sh_degree=3,
+                rgb=gaussians.get_rgb,
+            )
     else:
         from edge_extraction.extract_para_edge import get_parametric_edge
         # get_parametric_edge 把训练得到的“参数化边缘”（Bezier 曲线 + 直线段）
