@@ -422,7 +422,11 @@ class GaussianCurveModel(GaussianModel):
         # 一致性检查
         if self.use_RGB:
             assert self._logit_rgb.shape[0] == self._curve_points.shape[0]
-            assert self.get_rgb.shape[0] == self.get_xyz.shape[0]
+            assert (
+                self.get_rgb.shape[0]
+                == self._curve_points.shape[0] * self.n_gaussians
+            )
+
 
         self.is_bezier = torch.cat((self.is_bezier, new_is_bezier))
         self.xyz_gradient_accum = torch.zeros((self.get_curve_points.shape[0] * self.n_gaussians, 1), device="cuda")
