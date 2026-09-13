@@ -200,7 +200,14 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
     # 1. 初始化训练对象：创建输出、曲线高斯模型、场景、优化器，并可选恢复 checkpoint。
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
-    gaussians = GaussianCurveModel(dataset.sh_degree, dataset.n_gaussians, opt.optimizer_type, use_RGB=dataset.use_RGB)
+    gaussians = GaussianCurveModel(
+        dataset.sh_degree,
+        dataset.n_gaussians,
+        opt.optimizer_type,
+        use_RGB=dataset.use_RGB,
+        SGCR=dataset.SGCR,
+    )
+    opacity_reset_interval = 1000 if dataset.SGCR else opt.opacity_reset_interval
     scene = Scene(dataset, gaussians)
     gaussians.training_setup(opt)
     if checkpoint:
@@ -406,8 +413,16 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
                     # - 梯度大的高斯/曲线会被克隆或分裂，增加局部细节
                     # - opacity 太低的曲线会被剪掉，减少无效高斯
                     # - size_threshold: 7000 步后开始限制图像空间里过大的高斯
-                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None
+                    size_threshold = 20 if iteration > opacity_reset_interval else None
                     gaussians.densify_and_prune(opt.densify_grad_threshold, opt.opacity_cull, scene.cameras_extent, size_threshold, radii)
+
+                # SGCR 与原始 3DGS 一样只在 densification 阶段内按周期
+                # reset opacity，并在白背景的 densify_from_iter 首次触发。
+                if dataset.SGCR and (
+                    iteration % opacity_reset_interval == 0
+                    or (dataset.white_background and iteration == opt.densify_from_iter)
+                ):
+                    gaussians.reset_opacity()
 
             # --- 7b. 增密结束时的最终剪枝（iteration == densify_until_iter，默认 7000）---
             if iteration == opt.densify_until_iter:
@@ -417,9 +432,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
                 gaussians.prune_curves(prune_mask)
                 # 释放 GPU 碎片内存
                 torch.cuda.empty_cache()
-                # 冻结 opacity：把所有曲线的 opacity 强制拉到 >= 0.6，并停止优化 opacity
-                # 之后 opacity 不再变化，只优化曲线形状、宽度、mask 等参数
-                gaussians.fix_opacity()
+                if not dataset.SGCR:
+                    # 冻结 opacity：把所有曲线的 opacity 强制拉到 >= 0.6，并停止优化 opacity
+                    # 之后 opacity 不再变化，只优化曲线形状、宽度、mask 等参数
+                    gaussians.fix_opacity()
 
             # --- 7c. 后期周期性剪枝（每 1000 步，500 offset，增密结束后）---
             if iteration % 1000 == 500 and iteration > opt.densify_until_iter:

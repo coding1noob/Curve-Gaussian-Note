@@ -751,7 +751,7 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 TORCH_HOME=/data1/jhc/torch_
 
 TORCH_HOME=/data1/jhc/torch_cache python metrics.py -m output/buaa_net8.12_curve_repeat3
 
-# 手动删除点
+# 手动删除点（去杂点）
 
 1. 
 python delete_point.py \

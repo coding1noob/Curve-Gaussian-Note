@@ -28,6 +28,8 @@ nvidia-nvtx==13.0.85 nvidia-nvjitlink==13.0.88 nvidia-cufile==1.15.1.6 \
 cuda-bindings==13.0.3 cuda-pathfinder==1.5.6 triton==3.6.0 \
 -i https://pypi.tuna.tsinghua.edu.cn/simple
 
+遇到报错不要紧，继续下一步
+
 ## 第二步：只装 torch 本体，--no-deps 跳过依赖（慢速源只下这3个）
 python -m pip install --no-cache-dir --no-deps \
 torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 \
@@ -46,11 +48,19 @@ python -c "import torch, torchvision, numpy; print('torch', torch.__version__);p
 
 
 ##
+
 python -m pip install plyfile tqdm opencv-python joblib -i https://pypi.mirrors.ustc.edu.cn/simple/
 
 ##
+
 python -m pip install ./submodules/diff-cur-rasterization --no-build-isolation
+**如果出现报错："uint32_t" is undefined**
+在 submodules/diff-gaussian-rasterization/cuda_rasterizer/rasterizer_impl.h 里加入 #include <cstdint>
+
 python -m pip install ./submodules/simple-knn --no-build-isolation
+**如果报错出现：identifier "FLT_MAX" is undefined**
+在 submodules/simple-knn/simple_knn.cu 里加入 #include <cfloat>
+
 python -m pip install ./submodules/fused-ssim --no-build-isolation
 
 pip install seaborn
@@ -59,6 +69,69 @@ FORCE_CUDA=1 TORCH_CUDA_ARCH_LIST="8.9" pip install "git+https://github.com/face
 pip install einops
 pip install scikit-image
 
+## 安装可视化程序
+
+cd /home/gamma/storage_of_code/gs_seldom/gaussian-splatting/SIBR_viewers
+
+rm -rf build
+
+cmake -Bbuild . \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+
+然后把
+extlibs/CudaRasterizer/CudaRasterizer/CMakeLists.txt
+中的：
+set_target_properties(CudaRasterizer PROPERTIES CUDA_ARCHITECTURES "70;75;86")
+改为：
+set_target_properties(CudaRasterizer PROPERTIES CUDA_ARCHITECTURES "120")
+
+最后：
+rm -rf build
+rm -rf extlibs/CudaRasterizer/build
+rm -rf extlibs/CudaRasterizer/subbuild
+cmake -Bbuild . \
+-DCMAKE_BUILD_TYPE=Release \
+-DCMAKE_POLICY_VERSION_MINIMUM=3.5  
+
+cmake --build build -j"$(nproc)" --target install
+
+启动前检查动态库
+
+cd /home/gamma/storage_of_code/gs_seldom/gaussian-splatting/SIBR_viewers
+
+ldd install/bin/SIBR_gaussianViewer_app | grep "not found"
+没有输出就可以运行。设置环境变量：
+export SIBR_INSTALL=/home/gamma/storage_of_code/gs_seldom/gaussian-splatting/SIBR_viewers/install
+export LD_LIBRARY_PATH="$SIBR_INSTALL/lib:$SIBR_INSTALL/bin:$LD_LIBRARY_PATH"
+
+启动模型：
+
+"$SIBR_INSTALL/bin/SIBR_gaussianViewer_app" \
+-s /home/gamma/storage_of_code/habitat-sim/camera_output/formal3/colmap \
+-m /home/gamma/storage_of_code/gs_seldom/3dgs_output/debug/DEBUG_omask6 \
+--iteration 30000 \
+--device 0
+
+CUDA_LAUNCH_BLOCKING=1 \
+"$SIBR_INSTALL/bin/SIBR_gaussianViewer_app" \
+-s /home/gamma/storage_of_code/habitat-sim/camera_output/formal3/colmap \
+-m /home/gamma/storage_of_code/gs_seldom/3dgs_output/debug/DEBUG_omask6 \
+--iteration 5000 \
+--rendering-size 640 480 \
+--device 0 \
+--no_interop
+
+(
+-m所需的结构是：
+model_view/
+├── cfg_args
+├── cameras.json
+├── input.ply
+└── point_cloud/
+    └── iteration_30000/
+        └── point_cloud.ply
+)
 
 # 训练
 

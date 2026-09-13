@@ -78,6 +78,9 @@ class ModelParams(ParamGroup):
         self.outlier_nb_points = 30
         # 增加使用RGB图做限制
         self.use_RGB = False
+        # 启用 SGCR 风格的 opacity 初始化、重置和后期处理。
+        # 默认关闭，以保持原有 Curve-Gaussian 训练行为不变。
+        self.SGCR = False
 
         super().__init__(parser, "Loading Parameters", sentinel)
 

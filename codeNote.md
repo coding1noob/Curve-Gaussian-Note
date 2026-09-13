@@ -404,3 +404,7 @@ densification_postfix()
 额外导出带训练颜色的 curve_3dgs_init_RGB.ply
 
 train.py 中 save_curve_gaussians_for_3dgs_note函数 添加传入参数 rgb
+
+## 最终效果
+
+loss 中即时完成 mask 加权

@@ -276,7 +276,9 @@ def Simplyfill3(points, colors, normals, grid_resX=50, grid_resY=50, grid_resZ=5
         scaled_candidates = grid_pca / threshold_scale
 
         # 只查询每个候选点最近的一个原始点，不再保存范围内的全部邻居索引。
+        # cKDTree.query(..., distance_upper_bound=1.0) 的含义是：只接受距离不超过 1.0 的最近点
         candidate_tree = cKDTree(scaled_points)
+        # 然后查询最近原始点的切比雪夫距离
         nearest_distance, _ = candidate_tree.query(
             scaled_candidates,
             k=1,

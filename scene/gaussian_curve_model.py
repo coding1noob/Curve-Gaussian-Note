@@ -54,11 +54,13 @@ def initialize_bezier_curves(points, bound, n_control_points=4):
 
 
 class GaussianCurveModel(GaussianModel):
-    def __init__(self, sh_degree, n_gaussians=12, optimizer_type="default", use_RGB=False):
+    def __init__(self, sh_degree, n_gaussians=12, optimizer_type="default", use_RGB=False,
+                 SGCR=False):
         super().__init__(sh_degree, n_gaussians=12, optimizer_type=optimizer_type)
         self.n_gaussians = n_gaussians
         # 新增
         self.use_RGB = use_RGB
+        self.SGCR = SGCR
         self._logit_rgb = torch.empty(0)
         
         # 每条曲线上采样 n_gaussians 个位置。
@@ -270,8 +272,11 @@ class GaussianCurveModel(GaussianModel):
         # 每个点初始化一条 Bezier 曲线
         points_per_curve = initialize_bezier_curves(fused_point_cloud, bound, n_control_points)
         # 透明度初始化
+        # SGCR 使用 0.1 的低初始 opacity，让无效 grid 点在训练中自然衰减并被 prune。
+        # 原有 Curve-Gaussian 行为保持 0.6，避免改变未传 --SGCR 的实验结果。
+        initial_opacity = 0.1 if self.SGCR else 0.6
         opacities = self.inverse_opacity_activation(
-            0.6 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda"))
+            initial_opacity * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda"))
         # 宽度初始化
         widths = self.scaling_inverse_activation(
             5e-3 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda"))
@@ -435,8 +440,11 @@ class GaussianCurveModel(GaussianModel):
         return optimizable_tensors
 
     def reset_opacity(self):
+        # 与 SGCR 一致：周期性将 opacity 压到一个很小的上限，
+        # 让没有持续多视图支持的点在后续 prune 中被移除。
+        reset_value = 0.01 if self.SGCR else 0.1
         opacities_new = self.inverse_opacity_activation(
-            torch.min(self.get_curve_opacity, torch.ones_like(self.get_curve_opacity) * 0.1))
+            torch.min(self.get_curve_opacity, torch.ones_like(self.get_curve_opacity) * reset_value))
         optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
         self._opacity = optimizable_tensors["opacity"]
 
