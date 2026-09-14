@@ -114,3 +114,13 @@ def edge_aware_loss(image, gt_image, threshold=0.1):
     loss = (image-gt_image)**2
     return (loss*mask).mean()
 
+
+def sparsity_loss(opacity, s=0.5):
+    """Encourage Gaussian opacities to remain small.
+
+    This is the smooth sparsity regularizer used by SGCR.  ``opacity`` may
+    have any shape; the scalar mean keeps the term independent of the number
+    of Gaussians.  The logarithm provides a gentle gradient near zero while
+    penalising larger opacity values increasingly.
+    """
+    return torch.mean(torch.log1p(torch.square(opacity) / s))
