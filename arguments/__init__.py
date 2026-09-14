@@ -118,6 +118,8 @@ class OptimizationParams(ParamGroup):
         self.lambda_dssim = 0.1
         self.opacity_cull = 0.01
         self.opacity_cull_second = 0.05
+        # SGCR 最终导出前的独立 opacity 剪枝阈值，默认保持原有行为。
+        self.final_opacity_cull = 0.005
         self.opacity_loss_weight = 0.01
         # SGCR 模式下的 opacity 稀疏正则权重；默认值仅在 --SGCR 时使用。
         self.lambda_sparsity = 0.01

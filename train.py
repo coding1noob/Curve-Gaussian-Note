@@ -473,7 +473,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
             # 风格的 opacity/mask 清理，否则低 opacity 的网格曲线仍会被导出。
             if dataset.SGCR and iteration == opt.iterations:
                 before_prune = gaussians.get_curve_points.shape[0]
-                gaussians.only_prune(opacity_cull, opt.mask_threshold)
+                gaussians.only_prune(opt.final_opacity_cull, opt.mask_threshold)
                 print(f"[SGCR] final prune: {before_prune} -> "
                       f"{gaussians.get_curve_points.shape[0]} curves")
 
