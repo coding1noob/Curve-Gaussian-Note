@@ -588,7 +588,12 @@ class GaussianCurveModel(GaussianModel):
             t = self.sample_t[j_idx]
             self.densify_and_split_curve(selected_pts_mask, t.squeeze(-1))
 
-        prune_mask = (self.get_curve_opacity < min_opacity).squeeze()
+        # SGCR 的 reset 会把 opacity 精确压到 0.01；使用 <= 才能在后续
+        # densification prune 中删除这些点。默认模式保留原来的严格 < 语义。
+        if self.SGCR:
+            prune_mask = (self.get_curve_opacity <= min_opacity).squeeze()
+        else:
+            prune_mask = (self.get_curve_opacity < min_opacity).squeeze()
         self.prune_curves(prune_mask)
         torch.cuda.empty_cache()
 

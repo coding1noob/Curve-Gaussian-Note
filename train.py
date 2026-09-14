@@ -4,7 +4,7 @@ import open3d as o3d
 import torch
 import numpy as np
 from random import randint
-from utils.loss_utils import l1_loss, ssim,  edge_aware_loss
+from utils.loss_utils import l1_loss, ssim, edge_aware_loss, sparsity_loss
 from gaussian_renderer import render
 import sys
 from edge_extraction.merging import merge_endpoints
@@ -208,6 +208,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
         SGCR=dataset.SGCR,
     )
     opacity_reset_interval = 1000 if dataset.SGCR else opt.opacity_reset_interval
+    densification_interval = 100 if dataset.SGCR else opt.densification_interval
+    opacity_cull = 0.005 if dataset.SGCR else opt.opacity_cull
+    if dataset.SGCR:
+        print("[SGCR] initial opacity=0.1, densification_interval=100, "
+              "opacity_reset_interval=1000, opacity_cull=0.005")
     scene = Scene(dataset, gaussians)
     gaussians.training_setup(opt)
     if checkpoint:
@@ -302,6 +307,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
             opacity = gaussians.get_opacity[visibility_filter]
             opa_loss = opt.opacity_loss_weight * torch.log(1 + opacity ** 2 / 0.5).mean()
             loss = loss + opa_loss
+
+        # SGCR 的 opacity 稀疏项：持续把没有有效多视图支持的曲线压向透明，
+        # 再由周期性 prune 真正删除。默认模式不改变原有损失。
+        if dataset.SGCR:
+            loss = loss + opt.lambda_sparsity * sparsity_loss(gaussians.get_opacity)
 
         if opt.lambda_curve_smo > 0 and visibility_filter.sum() > 0:
             rotation_mat = gaussians.get_rotation_matrix
@@ -408,13 +418,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
                 # 累积每个高斯的梯度信息，梯度大说明该区域拟合不够，需要增密
                 gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
-                if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
-                    # 每隔 densification_interval（默认2000） 步执行一次增密+剪枝：
+                if iteration > opt.densify_from_iter and iteration % densification_interval == 0:
+                    # SGCR 模式每隔 100 步、默认模式按原配置执行一次增密+剪枝：
                     # - 梯度大的高斯/曲线会被克隆或分裂，增加局部细节
                     # - opacity 太低的曲线会被剪掉，减少无效高斯
                     # - size_threshold: 7000 步后开始限制图像空间里过大的高斯
                     size_threshold = 20 if iteration > opacity_reset_interval else None
-                    gaussians.densify_and_prune(opt.densify_grad_threshold, opt.opacity_cull, scene.cameras_extent, size_threshold, radii)
+                    gaussians.densify_and_prune(opt.densify_grad_threshold, opacity_cull, scene.cameras_extent, size_threshold, radii)
 
                 # SGCR 与原始 3DGS 一样只在 densification 阶段内按周期
                 # reset opacity，并在白背景的 densify_from_iter 首次触发。
@@ -458,6 +468,14 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
                 gaussians.fit_curve_to_line(opt.threshold_line, opt.threshold_max_line)
                 # 把距离近、方向相似的曲线/线段合并成一条，减少重复的边
                 gaussians.merge_curves(opt.distance_threshold, opt.similarity_threshold)
+
+            # simple 模式最终导出的 curve_3dgs_init.ply 也必须经过一次 SGCR
+            # 风格的 opacity/mask 清理，否则低 opacity 的网格曲线仍会被导出。
+            if dataset.SGCR and iteration == opt.iterations:
+                before_prune = gaussians.get_curve_points.shape[0]
+                gaussians.only_prune(opacity_cull, opt.mask_threshold)
+                print(f"[SGCR] final prune: {before_prune} -> "
+                      f"{gaussians.get_curve_points.shape[0]} curves")
 
             # ---  7f. 保存当前状态（两处 saving_iterations 判断）---
             if (iteration in saving_iterations) and not dataset.simple:

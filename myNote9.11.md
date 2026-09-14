@@ -490,6 +490,8 @@ python render_metrics.py \
 --iteration 30000 \
 --skip_train
 
+[test] PSNR: 30.7732  SSIM: 0.9676  LPIPS: 0.0490 [13/09 17:40:27]
+
 CUDA_DEVICE_ORDER=PCI_BUS_ID \
 CUDA_VISIBLE_DEVICES=2 \
 TORCH_HOME=/data1/jhc/torch_cache \
@@ -510,9 +512,9 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python render_2.py \
 5. 试试新改好的curveGS，再冲一次
 
 unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python train.py \
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=5 python train.py \
 -s /data2/jhc/datasets/formal3_white_notree_noLight \
--m /data2/jhc/output/curve_output/virtual_net2_white_simple_noLight \
+-m /data2/jhc/output/curve_output/virtual_net2_white_simple_noLight_SGCR \
 --eval \
 --iterations 30000 \
 --fill_method simplefill3 \
@@ -525,9 +527,54 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python train.py \
 --n_gaussians 3 \
 --simple \
 --lambda_points_conn 0 \
---init_voxel_size 0.01
+--init_voxel_size 0.01 \
+--SGCR
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data2/jhc/datasets/formal3_white_notree_noLight \
+-m /data2/jhc/output/3dgs_output/911/white_noLight_Mask_PGSRfull_onlyColmap5 \
+--eval \
+--disable_viewer \
+--curvegs /data2/jhc/output/curve_output/virtual_net2_white_simple_noLight_SGCR/curve_3dgs_init.ply \
+--sh_degree 0 \
+--curvegs_inject_iteration 20000 \
+--edge_non_edge_loss \
+--use_outside_Loss \
+--outside_dilation_radius 1 \
+--outside_alpha_margin 0.0 \
+--lambda_outside_rgb 1.0 \
+--PGSR_depth \
+--multi_view_num 1 \
+--multi_view_weight_from_iter 7000 \
+--multi_view_weight_end_iter 19999 \
+--colmap_PGSR
 
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_metrics.py \
+-s /data2/jhc/datasets/formal3_white_notree_noLight \
+-m /data2/jhc/output/3dgs_output/911/white_noLight_Mask_PGSRfull_onlyColmap5 \
+--iteration 30000 \
+--skip_train
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_PGSR.py \
+-s /data2/jhc/datasets/formal3_white_notree_noLight \
+-m /data2/jhc/output/3dgs_output/911/white_noLight_Mask_PGSRfull_onlyColmap5 \
+--iteration 30000 \
+--eval \
+--skip_train
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python render_2.py \
+-s /data2/jhc/datasets/formal3_white_notree_noLight \
+-m /data2/jhc/output/3dgs_output/911/white_noLight_Mask_PGSRfull_onlyColmap5 \
+--iteration 30000 \
+--curve_only
 
 
 
