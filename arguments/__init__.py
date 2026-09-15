@@ -78,6 +78,9 @@ class ModelParams(ParamGroup):
         self.outlier_nb_points = 30
         # 增加使用RGB图做限制
         self.use_RGB = False
+        # 非 RGB 模式下仍使用可学习颜色；两类初始点使用不同灰度。
+        self.colmap_color_init = 0.9
+        self.fill_color_init = 0.05
         # 启用 SGCR 风格的 opacity 初始化、重置和后期处理。
         # 默认关闭，以保持原有 Curve-Gaussian 训练行为不变。
         self.SGCR = False
@@ -123,6 +126,8 @@ class OptimizationParams(ParamGroup):
         self.opacity_loss_weight = 0.01
         # SGCR 模式下的 opacity 稀疏正则权重；默认值仅在 --SGCR 时使用。
         self.lambda_sparsity = 0.01
+        # PGSR 风格的 opacity-颜色一致性损失；仅在 SGCR 模式下启用。
+        self.lambda_consis = 0.01
         self.lambda_mse = 10. 
         self.lambda_curve_smo = 0.1
         self.lambda_points_conn = 0.1

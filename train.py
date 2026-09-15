@@ -4,7 +4,7 @@ import open3d as o3d
 import torch
 import numpy as np
 from random import randint
-from utils.loss_utils import l1_loss, ssim, edge_aware_loss, sparsity_loss
+from utils.loss_utils import l1_loss, ssim, edge_aware_loss, sparsity_loss, consistency_loss
 from gaussian_renderer import render
 import sys
 from edge_extraction.merging import merge_endpoints
@@ -90,18 +90,21 @@ def save_curve_gaussians_for_3dgs_note(gaussians, path, sh_degree=3, rgb=None):
             device=gaussians.get_xyz.device,
         )
     else:
-        if rgb.shape != (xyz.shape[0], 3):
+        if rgb.ndim != 2 or rgb.shape[0] != xyz.shape[0] or rgb.shape[1] not in (1, 3):
             raise ValueError(
                 "Export RGB must have shape "
-                f"[{xyz.shape[0]}, 3], got {tuple(rgb.shape)}"
+                f"[{xyz.shape[0]}, 1] or [{xyz.shape[0]}, 3], "
+                f"got {tuple(rgb.shape)}"
             )
 
         rgb = rgb.to(
             device=gaussians.get_xyz.device,
             dtype=torch.float32,
         ).clamp(0.0, 1.0)
+        if rgb.shape[1] == 1:
+            rgb = rgb.expand(-1, 3)
 
-    # 标准 3DGS 用零阶 SH 的 DC 属性保存基础 RGB。
+    # 标准 3DGS 用零阶 SH 的 DC 属性保存基础 RGB.
     f_dc = RGB2SH(rgb).detach().cpu().numpy().astype(np.float32)
 
     # 高阶 SH 系数直接置零，避免把 CurveGaussian 的边缘风格错误带到 3DGS_NOTE 里。
@@ -206,6 +209,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
         opt.optimizer_type,
         use_RGB=dataset.use_RGB,
         SGCR=dataset.SGCR,
+        colmap_color_init=getattr(dataset, "colmap_color_init", 0.9),
+        fill_color_init=getattr(dataset, "fill_color_init", 0.05),
     )
     opacity_reset_interval = 1000 if dataset.SGCR else opt.opacity_reset_interval
     densification_interval = 100 if dataset.SGCR else opt.densification_interval
@@ -237,6 +242,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
     ema_product_for_log = 0.0
     curve_smo_for_log = 0.0
     curve_conn_for_log = 0.0
+    consistency_for_log = 0.0
     normal_prior_error = torch.tensor(0.0).cuda()
     dot_products = torch.tensor(0.0).cuda()
     curve_smo = torch.tensor(0.0).cuda()
@@ -279,6 +285,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
         radii = render_pkg["radii"]
         # [1, H, W], 表示当前视角下每个像素被曲线高斯覆盖的程度
         rend_alpha = render_pkg["rend_alpha"]
+        colors_precomp = render_pkg["colors_precomp"]
 
 
         # 4. 图像监督 Loss：这里是把渲染出的线条外观和输入边缘图比较。
@@ -297,6 +304,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
         # loss: 包含 RGB、几何和后续正则项的总 loss. Ll1: 传给日志系统的基础图像/几何 loss
         loss, Ll1 = Loss_part(dataset, viewpoint_cam, image, rend_alpha, iteration, opt)
 
+
+        if dataset.SGCR and opt.lambda_consis > 0:
+            consistency = consistency_loss(colors_precomp, gaussians.get_opacity)
+            consistency_for_log = consistency.item()
+            loss = loss + opt.lambda_consis * consistency
 
         # 5. 正则项：约束 mask、opacity、曲线平滑度、宽度和端点连接关系。
         if iteration>=opt.densify_until_iter:
@@ -391,6 +403,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
                     "Loss": f"{ema_loss_for_log:.{5}f}",
                     "smo": f"{curve_smo_for_log:.{5}f}",
                     "conn": f"{curve_conn_for_log:.{5}f}",
+                    "consis": f"{consistency_for_log:.{5}f}",
                     "opa": f"{gaussians.get_opacity.mean().item():.{5}f}",
                 }
                 progress_bar.set_postfix(loss_dict)
@@ -402,6 +415,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
             if tb_writer is not None:
                 tb_writer.add_scalar('train_loss_patches/curve_smo', curve_smo_for_log, iteration)
                 tb_writer.add_scalar('train_loss_patches/curve_conn', curve_conn_for_log, iteration)
+                tb_writer.add_scalar('train_loss_patches/consistency', consistency_for_log, iteration)
 
 
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end),
@@ -545,9 +559,14 @@ def extract_curves(gaussians, opt, scene, simple=False):
         # 额外导出一个给 3DGS_NOTE 用的标准高斯初始化 PLY，
         # 这样后面可以把 CurveGaussian 的几何结构和 COLMAP 原始点云合并训练。
         curve_init_ply_path = os.path.join(scene.model_path, "curve_3dgs_init.ply")
-        save_curve_gaussians_for_3dgs_note(gaussians, curve_init_ply_path, sh_degree=3)
+        save_curve_gaussians_for_3dgs_note(
+            gaussians,
+            curve_init_ply_path,
+            sh_degree=3,
+            rgb=gaussians.get_rgb,
+        )
 
-        # 传 --use_RGB 则多生成一个 curve_3dgs_init_RGB.ply 文件
+        # Keep a legacy RGB-named copy when --use_RGB is explicitly enabled.
         if gaussians.use_RGB:
             rgb_init_ply_path = os.path.join(
                 scene.model_path,

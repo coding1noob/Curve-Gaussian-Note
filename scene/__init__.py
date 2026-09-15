@@ -443,9 +443,12 @@ class Scene:
         points = np.asarray(pcd_clean.points)
         colors = np.asarray(pcd_clean.colors)
         normals = np.zeros_like(points)
+        # Outlier filtering has already changed the point order; provenance starts here.
+        is_synthetic = np.zeros(points.shape[0], dtype=bool)
         print(f"离群点去除后点数: {points.shape[0]} points")
 
         if args.fill_method == "planefill":
+            old_count = points.shape[0]
             points, colors, normals = Planefill3(
                         points, colors, normals, scene_info.train_cameras,
                         view_depth=args.Planefill3_view_depth,
@@ -456,6 +459,10 @@ class Scene:
                         angle_sum_threshold=args.Planefill3_angle_sum_threshold,
                         inner_count_threshold=args.inner_count_threshold
                     )
+            is_synthetic = np.concatenate([
+                is_synthetic,
+                np.ones(points.shape[0] - old_count, dtype=bool),
+            ])
         elif args.fill_method == "simplefill":
             trajectory_up_axis = None
             if args.trajectory_root:
@@ -464,6 +471,7 @@ class Scene:
                     print("trajectory_root 启用失败: 训练相机数量少于 3，仍使用点云 PCA 的 z 轴")
                 else:
                     print(f"trajectory_root z/up axis: {trajectory_up_axis}")
+            old_count = points.shape[0]
             points, colors, normals = Simplyfill2(
                 points, colors, normals,
                 grid_resX=args.fill_grid_resX,
@@ -471,6 +479,10 @@ class Scene:
                 grid_resZ=args.fill_grid_resZ,
                 up_axis=trajectory_up_axis
             )
+            is_synthetic = np.concatenate([
+                is_synthetic,
+                np.ones(points.shape[0] - old_count, dtype=bool),
+            ])
         elif args.fill_method == "simplefill3":
             # 8.12：使用增加了 XY 最近距离过滤的 Simplyfill3。
             trajectory_up_axis = None
@@ -480,6 +492,7 @@ class Scene:
                     print("trajectory_root 启用失败: 训练相机数量少于 3，仍使用点云 PCA 的 z 轴")
                 else:
                     print(f"trajectory_root z/up axis: {trajectory_up_axis}")
+            old_count = points.shape[0]
             points, colors, normals = Simplyfill3(
                 points, colors, normals,
                 grid_resX=args.fill_grid_resX,
@@ -490,6 +503,10 @@ class Scene:
                 y_threshold=args.fill_y_threshold,
                 z_threshold=args.fill_z_threshold
             )
+            is_synthetic = np.concatenate([
+                is_synthetic,
+                np.ones(points.shape[0] - old_count, dtype=bool),
+            ])
         else:
             raise ValueError(f"Unknown fill_method: {args.fill_method}")
         input_filled_ply_path = os.path.join(self.model_path, "input_filled.ply")
@@ -500,7 +517,12 @@ class Scene:
         # 把填充后的点云写回 scene_info，这样后续 create_from_pcd 才真正用填充后的点初始化曲线
         from scene.gaussian_model import BasicPointCloud
         scene_info = scene_info._replace(
-            point_cloud=BasicPointCloud(points=points, colors=colors, normals=normals)
+            point_cloud=BasicPointCloud(
+                points=points,
+                colors=colors,
+                normals=normals,
+                is_synthetic=is_synthetic,
+            )
         )
         # ==============================================================================================================
 
@@ -539,7 +561,13 @@ class Scene:
         else:
             if scene_info.point_cloud is not None:
                 print(f"Initial point cloud points: {scene_info.point_cloud.points.shape[0]}")
-            self.gaussians.create_from_pcd(scene_info.point_cloud, scene_info.train_cameras, self.cameras_extent)
+            self.gaussians.create_from_pcd(
+                scene_info.point_cloud,
+                scene_info.train_cameras,
+                self.cameras_extent,
+                colmap_color_init=getattr(args, "colmap_color_init", 0.9),
+                fill_color_init=getattr(args, "fill_color_init", 0.05),
+            )
 
     def save(self, iteration):
         point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))

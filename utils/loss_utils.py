@@ -115,6 +115,30 @@ def edge_aware_loss(image, gt_image, threshold=0.1):
     return (loss*mask).mean()
 
 
+def consistency_loss(color, opacity):
+    """Match each Gaussian opacity to its grayscale or RGB color."""
+    if color.ndim != 2 or color.shape[-1] not in (1, 3):
+        raise ValueError(
+            "color must have shape [num_gaussians, 1] or [num_gaussians, 3], "
+            f"got {tuple(color.shape)}"
+        )
+    if opacity.ndim != 2 or opacity.shape[-1] != 1:
+        raise ValueError(
+            "opacity must have shape [num_gaussians, 1], "
+            f"got {tuple(opacity.shape)}"
+        )
+    if color.shape[0] != opacity.shape[0]:
+        raise ValueError(
+            "color and opacity must contain the same number of Gaussians"
+        )
+    # For grayscale this is [P, 1]; for RGB opacity broadcasts over channels.
+    return torch.mean((opacity - color) ** 2)
+
+
+def consisy_loss(color, opacity):
+    """Backward-compatible SGCR spelling."""
+    return consistency_loss(color, opacity)
+
 def sparsity_loss(opacity, s=0.5):
     """Encourage Gaussian opacities to remain small.
 

@@ -55,13 +55,19 @@ def initialize_bezier_curves(points, bound, n_control_points=4):
 
 class GaussianCurveModel(GaussianModel):
     def __init__(self, sh_degree, n_gaussians=12, optimizer_type="default", use_RGB=False,
-                 SGCR=False):
+                 SGCR=False, colmap_color_init=0.9, fill_color_init=0.05):
         super().__init__(sh_degree, n_gaussians=12, optimizer_type=optimizer_type)
         self.n_gaussians = n_gaussians
         # 新增
         self.use_RGB = use_RGB
         self.SGCR = SGCR
+        self.colmap_color_init = colmap_color_init
+        self.fill_color_init = fill_color_init
+        # SGCR without --use_RGB learns one grayscale value per Gaussian;
+        # RGB mode keeps three independent channels.
+        self.color_channels = 3 if use_RGB else 1
         self._logit_rgb = torch.empty(0)
+        self.is_synthetic = torch.empty(0, dtype=torch.bool, device="cuda")
         
         # 每条曲线上采样 n_gaussians 个位置。
         # 例如 n_gaussians=12 时，一条 Bezier 曲线会变成 12 个可渲染的高斯椭球。
@@ -81,6 +87,9 @@ class GaussianCurveModel(GaussianModel):
             "active_sh_degree": self.active_sh_degree,
             "n_gaussians": self.n_gaussians,
             "use_RGB": self.use_RGB,
+            "color_channels": self.color_channels,
+            "colmap_color_init": self.colmap_color_init,
+            "fill_color_init": self.fill_color_init,
             "curve_points": self._curve_points,
             "features_dc": self._features_dc,
             "features_rest": self._features_rest,
@@ -88,6 +97,7 @@ class GaussianCurveModel(GaussianModel):
             "width": self._width,
             "mask": self._mask,
             "logit_rgb": self._logit_rgb,
+            "is_synthetic": self.is_synthetic,
             "is_bezier": self.is_bezier,
             "max_radii2D": self.max_radii2D,
             "xyz_gradient_accum": self.xyz_gradient_accum,
@@ -109,6 +119,9 @@ class GaussianCurveModel(GaussianModel):
 
         checkpoint_use_RGB = model_args["use_RGB"]
         checkpoint_n_gaussians = model_args["n_gaussians"]
+        checkpoint_color_channels = model_args.get(
+            "color_channels", 3 if checkpoint_use_RGB else 1
+        )
 
         if checkpoint_use_RGB != self.use_RGB:
             raise ValueError(
@@ -122,6 +135,12 @@ class GaussianCurveModel(GaussianModel):
                 "Checkpoint n_gaussians does not match the current command. "
                 f"checkpoint n_gaussians={checkpoint_n_gaussians}, "
                 f"current n_gaussians={self.n_gaussians}"
+            )
+        if checkpoint_color_channels != self.color_channels:
+            raise ValueError(
+                "Checkpoint color channel count does not match the current command. "
+                f"checkpoint color_channels={checkpoint_color_channels}, "
+                f"current color_channels={self.color_channels}"
             )
 
         self.active_sh_degree = model_args["active_sh_degree"]
@@ -147,6 +166,15 @@ class GaussianCurveModel(GaussianModel):
         )
         self._logit_rgb = nn.Parameter(
             model_args["logit_rgb"].requires_grad_(True)
+        )
+
+        restored_is_synthetic = model_args.get("is_synthetic")
+        if restored_is_synthetic is None:
+            restored_is_synthetic = torch.zeros(
+                self._curve_points.shape[0], dtype=torch.bool, device=self._curve_points.device
+            )
+        self.is_synthetic = restored_is_synthetic.to(
+            device=self._curve_points.device, dtype=torch.bool
         )
 
         self.is_bezier = model_args["is_bezier"]
@@ -235,8 +263,8 @@ class GaussianCurveModel(GaussianModel):
     # 新增 get_rgb
     @property
     def get_rgb(self):
-        # _logit_rgb: [num_curves, n_gaussians, 3]
-        # sigmoid 后将颜色限制在 (0, 1)，再按 curve-major 展平。
+        # _logit_rgb: [num_curves, n_gaussians, C], C=1 for grayscale or 3 for RGB.
+        # Sigmoid maps the learnable logit to a visible intensity in (0, 1).
         return torch.sigmoid(self._logit_rgb).flatten(0, 1)
 
     @property
@@ -255,9 +283,13 @@ class GaussianCurveModel(GaussianModel):
     
 
     def create_from_pcd(self, pcd: BasicPointCloud, cam_infos: int, spatial_lr_scale: float,
-                        init_size: float = 0.5, n_control_points: int = 4):
+                        init_size: float = 0.5, n_control_points: int = 4,
+                        colmap_color_init: float = 0.9, fill_color_init: float = 0.05):
         # 保存空间学习率缩放, 3DGS 会根据场景尺度缩放位置学习率
         self.spatial_lr_scale = spatial_lr_scale
+        # Keep direct callers of create_from_pcd consistent with constructor settings.
+        self.colmap_color_init = colmap_color_init
+        self.fill_color_init = fill_color_init
         # 将点云坐标转换成 GPU Tensor
         fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()
 
@@ -281,24 +313,35 @@ class GaussianCurveModel(GaussianModel):
         widths = self.scaling_inverse_activation(
             5e-3 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda"))
 
-        # 给曲线上的每个高斯复制初始颜色, [:, None, :] 将这一索引分成三部分, 
-        # "None" 在中间插入一个新维度, 代表“这条曲线上的高斯序号”
-        pcd_colors = pcd.colors[:, None,:].repeat(
-            self.n_gaussians, 
-            axis=1
-            )
-        
-        # 使用 COLMAP 点云颜色初始化每条曲线上的所有采样高斯。
-        # 如果不clamp,那么logit(0)=log(0)=-inf, logit(1)=log(1/0)=inf, 这会导致训练不稳定。
-        rgb = torch.tensor(
-            pcd_colors,
-            dtype=torch.float32,
-            device="cuda",
-        ).clamp(1e-6, 1.0 - 1e-6)
-
-        # 将 RGB 转为可训练的 logit 参数
-        # 其为 sigmoid 的反函数，使 sigmoid(logit_rgb) 恢复为原始 RGB。
+        # 使用来源标记初始化可学习颜色：COLMAP 点较亮，填充点从低灰度开始。
+        is_synthetic = getattr(pcd, "is_synthetic", None)
+        if is_synthetic is None:
+            is_synthetic = np.zeros(fused_point_cloud.shape[0], dtype=bool)
+        is_synthetic = np.asarray(is_synthetic, dtype=bool)
+        if is_synthetic.shape != (fused_point_cloud.shape[0],):
+            raise ValueError("pcd.is_synthetic must have one flag per point")
+        self.is_synthetic = torch.from_numpy(is_synthetic).to(
+            device=fused_point_cloud.device, dtype=torch.bool
+        )
+        init_colors = torch.where(
+            self.is_synthetic[:, None],
+            torch.full((fused_point_cloud.shape[0], 1), self.fill_color_init,
+                       device=fused_point_cloud.device),
+            torch.full((fused_point_cloud.shape[0], 1), self.colmap_color_init,
+                       device=fused_point_cloud.device),
+        )
+        if self.color_channels == 3:
+            init_colors = init_colors.expand(-1, 3)
+        rgb = init_colors[:, None, :].expand(-1, self.n_gaussians, -1).clamp(
+            1e-6, 1.0 - 1e-6
+        )
         logit_rgb = torch.log(rgb / (1.0 - rgb))
+
+        # 保留点云颜色用于旧的 SH 特征初始化；渲染颜色使用上面的可学习参数。
+        pcd_colors = pcd.colors[:, None, :].repeat(
+            self.n_gaussians,
+            axis=1
+        )
 
         # 旧代码保留
         # pcd_colors只取第一个颜色通道, 然后RGB2SH(...)转换为零阶 SH 的 DC 系数
@@ -375,15 +418,14 @@ class GaussianCurveModel(GaussianModel):
                 {'params': [self._mask], 'lr': training_args.mask_lr, "name": "mask"}
             ]
 
-            # 优化器中添加参数
-            if self.use_RGB:
-                l.append(
-                    {
-                        "params": [self._logit_rgb],
-                        "lr": training_args.rgb_lr,
-                        "name": "rgb",
-                    }
-                )
+            # 可学习颜色在 RGB 和非 RGB 模式都参与优化。
+            l.append(
+                {
+                    "params": [self._logit_rgb],
+                    "lr": training_args.rgb_lr,
+                    "name": "rgb",
+                }
+            )
 
 
             if self.optimizer_type == "default":
@@ -471,15 +513,14 @@ class GaussianCurveModel(GaussianModel):
         self._width = optimizable_tensors["width"]
         self._mask = optimizable_tensors["mask"]
 
-        if self.use_RGB:
-            self._logit_rgb = optimizable_tensors["rgb"]
-
+        self._logit_rgb = optimizable_tensors["rgb"]
 
         valid_points_mask = valid_curves_mask.unsqueeze(1).repeat(1, self.n_gaussians).flatten()
         self.xyz_gradient_accum = self.xyz_gradient_accum[valid_points_mask]
 
         self.denom = self.denom[valid_points_mask]
         self.is_bezier = self.is_bezier[valid_curves_mask]
+        self.is_synthetic = self.is_synthetic[valid_curves_mask]
         self.max_radii2D = self.max_radii2D[valid_points_mask]
         try:
             self.tmp_radii = self.tmp_radii[valid_points_mask]
@@ -491,7 +532,8 @@ class GaussianCurveModel(GaussianModel):
     # 作用:
     # 在 split 或 merge 已经算出新曲线之后，把这些新曲线正式加入模型和 optimizer，并重置与曲线数量相关的统计数据
     def densification_postfix(self, new_curve_points, new_features_dc, new_features_rest,
-                              new_opacities, new_widths, new_masks, new_is_bezier, new_logit_rgb=None):
+                              new_opacities, new_widths, new_masks, new_is_bezier,
+                              new_logit_rgb=None, new_is_synthetic=None):
 
         d = {"curve_points": new_curve_points,
              "f_dc": new_features_dc,
@@ -500,12 +542,11 @@ class GaussianCurveModel(GaussianModel):
              "width": new_widths,
              "mask": new_masks}
         
-        if self.use_RGB:
-            if new_logit_rgb is None:
-                raise ValueError(
-                    "RGB mode requires new_logit_rgb during densification"
-                )
-            d["rgb"] = new_logit_rgb
+        if new_logit_rgb is None:
+            raise ValueError(
+                "Densification requires new_logit_rgb"
+            )
+        d["rgb"] = new_logit_rgb
 
 
         optimizable_tensors = self.cat_tensors_to_optimizer(d)
@@ -516,20 +557,27 @@ class GaussianCurveModel(GaussianModel):
         self._width = optimizable_tensors["width"]
         self._mask = optimizable_tensors["mask"]
 
-        if self.use_RGB:
-            self._logit_rgb = optimizable_tensors["rgb"]
+        self._logit_rgb = optimizable_tensors["rgb"]
 
         # 一致性检查
-        if self.use_RGB:
-            assert self._logit_rgb.shape[0] == self._curve_points.shape[0]
-            assert (
-                self.get_rgb.shape[0]
-                == self._curve_points.shape[0] * self.n_gaussians
-            )
+        assert self._logit_rgb.shape[0] == self._curve_points.shape[0]
+        assert (
+            self.get_rgb.shape[0]
+            == self._curve_points.shape[0] * self.n_gaussians
+        )
 
 
         self.is_bezier = torch.cat((self.is_bezier, new_is_bezier))
-        self.xyz_gradient_accum = torch.zeros((self.get_curve_points.shape[0] * self.n_gaussians, 1), device="cuda")
+        if new_is_synthetic is None:
+            new_is_synthetic = torch.zeros(
+                new_curve_points.shape[0], dtype=torch.bool, device=new_curve_points.device
+            )
+        self.is_synthetic = torch.cat((
+            self.is_synthetic,
+            new_is_synthetic.to(device=self.is_synthetic.device, dtype=torch.bool),
+        ))
+        assert self.is_synthetic.shape[0] == self._curve_points.shape[0]
+
         self.denom = torch.zeros((self.get_curve_points.shape[0] * self.n_gaussians, 1), device="cuda")
         self.max_radii2D = torch.zeros((self.get_curve_points.shape[0] * self.n_gaussians), device="cuda")
 
@@ -550,8 +598,6 @@ class GaussianCurveModel(GaussianModel):
         # selected_pts_mask 表示哪些曲线需要分裂
         new_logit_rgb = (
             self._logit_rgb[selected_pts_mask].repeat(N, 1, 1)
-            if self.use_RGB
-            else None
         )
 
         # De Casteljau’s Algorithm
@@ -570,6 +616,7 @@ class GaussianCurveModel(GaussianModel):
             new_masks,
             new_is_bezier,
             new_logit_rgb=new_logit_rgb,
+            new_is_synthetic=self.is_synthetic[selected_pts_mask].repeat(N),
         )
 
         prune_filter = torch.cat(
@@ -710,6 +757,7 @@ class GaussianCurveModel(GaussianModel):
             new_widths = []
             new_masks = []
             new_is_bezier = []
+            new_is_synthetic = []
 
             # 新增 RGB 列表
             new_logit_rgb = []
@@ -813,18 +861,17 @@ class GaussianCurveModel(GaussianModel):
                     new_features_dc.append(self._features_dc[0:1])
                     new_features_rest.append(self._features_rest[0:1])
                     new_is_bezier.append(torch.ones_like(self.is_bezier[0:1], dtype=torch.bool))
+                    new_is_synthetic.append(self.is_synthetic[component_indices].any().view(1))
                     new_opacities.append(self._opacity[component_indices].mean(dim=0,keepdim=True))
                     new_widths.append(self._width[component_indices].mean(dim=0, keepdim=True))
                     new_masks.append(torch.ones_like(self._mask[0:1]))
 
                     # 曲线合并生成 RGB
-                    if self.use_RGB:
-                        merged_rgb = torch.sigmoid(
-                            self._logit_rgb[component_indices]
-                        ).mean(dim=0, keepdim=True)
-
-                        merged_rgb = merged_rgb.clamp(1e-6, 1.0 - 1e-6)
-                        new_logit_rgb.append(torch.log(merged_rgb / (1.0 - merged_rgb)))
+                    merged_rgb = torch.sigmoid(
+                        self._logit_rgb[component_indices]
+                    ).mean(dim=0, keepdim=True)
+                    merged_rgb = merged_rgb.clamp(1e-6, 1.0 - 1e-6)
+                    new_logit_rgb.append(torch.log(merged_rgb / (1.0 - merged_rgb)))
 
 
         # merge lines
@@ -862,18 +909,17 @@ class GaussianCurveModel(GaussianModel):
                         new_features_dc.append(self._features_dc[0:1])
                         new_features_rest.append(self._features_rest[0:1])
                         new_is_bezier.append(torch.zeros_like(self.is_bezier[0:1], dtype=torch.bool))
+                        new_is_synthetic.append(self.is_synthetic[component_indices].any().view(1))
                         new_opacities.append(self._opacity[component_indices].mean(dim=0, keepdim=True))
                         new_widths.append(self._width[component_indices].mean(dim=0, keepdim=True))
                         new_masks.append(torch.ones_like(self._mask[0:1]))
 
                         # 直线合并生成
-                        if self.use_RGB:
-                            merged_rgb = torch.sigmoid(
-                                self._logit_rgb[component_indices]
-                            ).mean(dim=0, keepdim=True)
-
-                            merged_rgb = merged_rgb.clamp(1e-6, 1.0 - 1e-6)
-                            new_logit_rgb.append(torch.log(merged_rgb / (1.0 - merged_rgb)))
+                        merged_rgb = torch.sigmoid(
+                            self._logit_rgb[component_indices]
+                        ).mean(dim=0, keepdim=True)
+                        merged_rgb = merged_rgb.clamp(1e-6, 1.0 - 1e-6)
+                        new_logit_rgb.append(torch.log(merged_rgb / (1.0 - merged_rgb)))
 
 
 
@@ -888,11 +934,8 @@ class GaussianCurveModel(GaussianModel):
                 torch.cat(new_widths),
                 torch.cat(new_masks),
                 torch.cat(new_is_bezier),
-                new_logit_rgb=(
-                    torch.cat(new_logit_rgb)
-                    if self.use_RGB
-                    else None
-                ),
+                new_logit_rgb=torch.cat(new_logit_rgb),
+                new_is_synthetic=torch.cat(new_is_synthetic),
             )
 
             self.prepare_scaling_rot()

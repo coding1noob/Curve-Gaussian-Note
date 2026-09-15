@@ -123,37 +123,37 @@ def render(viewpoint_camera, pc : GaussianCurveModel, pipe, bg_color : torch.Ten
     # 修改后:
     shs = None
 
+    # Both rendering modes use the trainable direct RGB head; bg_color remains
+    # the fixed rasterizer background.
     if override_color is not None:
         # 调用者显式传入的颜色具有最高优先级。
         colors_precomp = override_color
-    elif pc.use_RGB:
-        # 每个采样高斯具有一个可训练的直接 RGB。
-        colors_precomp = pc.get_rgb
     else:
-        # 兼容原始 CurveGS：所有高斯渲染为白色。
-        colors_precomp = torch.ones(
-            (means3D.shape[0], 3),
-            device=means3D.device,
-            dtype=means3D.dtype,
-        )
+        # 非 RGB 模式保留 [P, 1] 灰度；RGB 模式为 [P, 3]。
+        colors_precomp = pc.get_rgb
 
-    # 允许外部传入一个所有高斯共享的 RGB，例如 [1, 0, 0]。
     if colors_precomp.ndim == 1:
         colors_precomp = colors_precomp.unsqueeze(0).expand(
             means3D.shape[0],
             -1,
         )
 
-    if colors_precomp.shape != (means3D.shape[0], 3):
+    if colors_precomp.shape[0] != means3D.shape[0] or colors_precomp.shape[1] not in (1, 3):
         raise ValueError(
-            "colors_precomp must have shape [3] or "
-            f"[{means3D.shape[0]}, 3], "
-            f"got {tuple(colors_precomp.shape)}"
+            "colors_precomp must have shape [P, 1] or [P, 3], "
+            f"where P={means3D.shape[0]}; got {tuple(colors_precomp.shape)}"
         )
 
     colors_precomp = colors_precomp.to(
         device=means3D.device,
         dtype=means3D.dtype,
+    ).contiguous()
+    # The rasterizer always consumes RGB. Keep the original grayscale tensor
+    # available to training while expanding only this rasterizer input.
+    raster_colors = (
+        colors_precomp.expand(-1, 3)
+        if colors_precomp.shape[1] == 1
+        else colors_precomp
     ).contiguous()
 
                 
@@ -199,7 +199,7 @@ def render(viewpoint_camera, pc : GaussianCurveModel, pipe, bg_color : torch.Ten
         means3D=means3D,
         means2D=means2D,
         shs=None,
-        colors_precomp=colors_precomp,
+        colors_precomp=raster_colors,
         opacities=opacity,
         scales=scales,
         rotations=rotations,
@@ -232,7 +232,8 @@ def render(viewpoint_camera, pc : GaussianCurveModel, pipe, bg_color : torch.Ten
         "radii": radii,
         "depth" : depth_image,
         "rend_dir": rendered_dir,
-        "rend_alpha": rendered_alpha
-        }
+        "rend_alpha": rendered_alpha,
+        "colors_precomp": colors_precomp,
+    }
     
     return out

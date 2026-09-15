@@ -657,6 +657,90 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python render_curve.py \
 --eval \
 --skip_test
 
+3. 在2的基础上增加--final_opacity_cull 0.05
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/curve_output/virtual_net2_noLight_SGCR_finalPrune \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 10 \
+--fill_y_threshold 0.5 \
+--fill_grid_resX 200 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 50 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--SGCR \
+--final_opacity_cull 0.5
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python render_curve.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/curve_output/virtual_net2_noLight_SGCR_finalPrune \
+--curve_ply /data2/jhc/output/curve_output/virtual_net2_noLight_SGCR_finalPrune/curve_3dgs_init.ply \
+--eval \
+--skip_test
+
+效果有，但是网前杂点依旧消不掉
+
+4. 
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/curve_output/virtual_net2_noLight_SGCR_finalPrune_consistencyLoss \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 10 \
+--fill_y_threshold 0.5 \
+--fill_grid_resX 200 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 50 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--SGCR \
+--final_opacity_cull 0.5
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
