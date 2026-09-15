@@ -515,6 +515,7 @@ class GaussianCurveModel(GaussianModel):
 
         self._logit_rgb = optimizable_tensors["rgb"]
 
+        # Make curve-level pruning masks and per-Gaussian statistics use the same layout.
         valid_points_mask = valid_curves_mask.unsqueeze(1).repeat(1, self.n_gaussians).flatten()
         self.xyz_gradient_accum = self.xyz_gradient_accum[valid_points_mask]
 
@@ -578,8 +579,19 @@ class GaussianCurveModel(GaussianModel):
         ))
         assert self.is_synthetic.shape[0] == self._curve_points.shape[0]
 
-        self.denom = torch.zeros((self.get_curve_points.shape[0] * self.n_gaussians, 1), device="cuda")
-        self.max_radii2D = torch.zeros((self.get_curve_points.shape[0] * self.n_gaussians), device="cuda")
+        # New curves need fresh per-Gaussian densification statistics as well.
+        self.xyz_gradient_accum = torch.zeros(
+            (self.get_curve_points.shape[0] * self.n_gaussians, 1),
+            device="cuda",
+        )
+        self.denom = torch.zeros(
+            (self.get_curve_points.shape[0] * self.n_gaussians, 1),
+            device="cuda",
+        )
+        self.max_radii2D = torch.zeros(
+            (self.get_curve_points.shape[0] * self.n_gaussians),
+            device="cuda",
+        )
 
 
 
