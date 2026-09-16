@@ -690,3 +690,97 @@ Curve-Gaussian:
     Phase 2: restore checkpoint + append curve_3dgs_init_RGB.ply
               + continue standard 3DGS training
 ```
+
+## 八、CurveGaussian 分裂后的统计量同步
+
+### 1. 已确认的错误
+
+在 `n_gaussians=3`、训练到约第 4000 次迭代时，如果曲线分裂流程报错：
+
+```text
+IndexError: The shape of the mask [850815] at index 0 does not match
+ the shape of the indexed tensor [455883, 1]
+```
+
+错误调用链通常是：
+
+```text
+curve_split_curvature()
+-> densify_and_split_curve()
+-> densification_postfix()
+-> prune_curves()
+```
+
+### 2. 根因
+
+`densification_postfix()` 添加了新曲线，却只重置了 `denom` 和 `max_radii2D`，没有同步重置 `xyz_gradient_accum`。因此新增曲线后：
+
+- `prune_curves()` 按最新曲线数量生成了 per-Gaussian mask；
+- `xyz_gradient_accum` 仍然保留旧的 Gaussian 数量；
+- 用新 mask 索引旧统计量时触发维度不匹配。
+
+所有 per-Gaussian 状态都必须遵循：
+
+```text
+num_gaussians = num_curves * n_gaussians
+```
+
+### 3. 修复要求
+
+文件：`scene/gaussian_curve_model.py`
+
+在 `densification_postfix()` 完成新曲线拼接后，同时重置以下三个统计量：
+
+```python
+self.xyz_gradient_accum = torch.zeros(
+    (self.get_curve_points.shape[0] * self.n_gaussians, 1),
+    device="cuda",
+)
+self.denom = torch.zeros(
+    (self.get_curve_points.shape[0] * self.n_gaussians, 1),
+    device="cuda",
+)
+self.max_radii2D = torch.zeros(
+    (self.get_curve_points.shape[0] * self.n_gaussians),
+    device="cuda",
+)
+```
+
+`prune_curves()` 中的 `valid_points_mask` 也必须按曲线维度展开：
+
+```python
+valid_points_mask = valid_curves_mask.unsqueeze(1) \\
+    .repeat(1, self.n_gaussians).flatten()
+```
+
+### 4. 副本同步与验证
+
+训练命令实际使用哪个源码目录，就必须修改哪个目录。例如命令若从：
+
+```text
+/data1/jhc/storage_of_code/Curve-Gaussian-Note/
+```
+
+启动，则必须将上述修复同步到该目录的 `scene/gaussian_curve_model.py`；只修改：
+
+```text
+/home/gamma/storage_of_code/Curve-Gaussian/
+```
+
+不会影响正在运行的副本。
+
+修改后至少执行：
+
+```bash
+python -m py_compile scene/gaussian_curve_model.py
+```
+
+并在下一次分裂、合并和剪枝前检查：
+
+```python
+assert self.xyz_gradient_accum.shape[0] == self.get_xyz.shape[0]
+assert self.denom.shape[0] == self.get_xyz.shape[0]
+assert self.max_radii2D.shape[0] == self.get_xyz.shape[0]
+```
+
+每次拓扑操作后都应保持这些断言成立。
