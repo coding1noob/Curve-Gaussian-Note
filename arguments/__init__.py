@@ -76,6 +76,9 @@ class ModelParams(ParamGroup):
         self.fill_y_threshold = 0.1
         self.fill_z_threshold = 0.1
         self.outlier_nb_points = 30
+        self.outlier_nb_neighbors = 30
+        self.outlier_std_ratio = 2.0
+        self.camera_point_distance = 0.0
         # 增加使用RGB图做限制
         self.use_RGB = False
         # 非 RGB 模式下仍使用可学习颜色；两类初始点使用不同灰度。

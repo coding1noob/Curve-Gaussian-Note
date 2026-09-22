@@ -1049,6 +1049,8 @@ python render_metrics.py \
 --iteration 30000 \
 --skip_train
 
+[test] PSNR: 32.4553  SSIM: 0.9729  LPIPS: 0.0519 [16/09 15:42:00]
+
 unset CUDA_VISIBLE_DEVICES
 CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python train.py \
 -s /data2/jhc/datasets/formal3_white_simple \
@@ -1066,6 +1068,8 @@ python render_metrics.py \
 -m /data2/jhc/output/3dgs_output/915/white_simpe_noMask_SGCR3 \
 --iteration 30000 \
 --skip_train
+
+[test] PSNR: 32.5531  SSIM: 0.9728  LPIPS: 0.0521 [16/09 15:42:42]
 
 # 不再用之前的 buaa_net_simple-3，用加了SGCR的，训 sh=0
 
@@ -1231,6 +1235,8 @@ python render_metrics.py \
 --iteration 30000 \
 --skip_train
 
+[test] PSNR: 21.0403  SSIM: 0.5844  LPIPS: 0.4088 [16/09 15:16:39]
+
 7. 训一版不带Mask，没有SGCR的sh=0	和	训一版有Mask的	做对比
 
 unset CUDA_VISIBLE_DEVICES
@@ -1250,6 +1256,8 @@ python render_metrics.py \
 -m /data2/jhc/output/3dgs_output/915/buaaNet_noMask_noSGCR \
 --iteration 30000 \
 --skip_train
+
+[test] PSNR: 21.0413  SSIM: 0.5917  LPIPS: 0.3764 [16/09 15:08:17]
 
 unset CUDA_VISIBLE_DEVICES
 CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=5 python train.py \
@@ -1275,32 +1283,295 @@ python render_metrics.py \
 --iteration 30000 \
 --skip_train
 
+[test] PSNR: 21.1204  SSIM: 0.5729  LPIPS: 0.4069 [16/09 15:45:50]
 
+# 对地面复杂纹理无光照进行法线Loss实验（无SGCR）
 
+1. 只对colmap点加入法线Loss
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask_colmapOnlynormal \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/virtual_net2_noLight/curve_3dgs_init.ply \
+--sh_degree 0 \
+--curvegs_inject_iteration 20000 \
+--edge_non_edge_loss \
+--use_outside_Loss \
+--outside_dilation_radius 1 \
+--outside_alpha_margin 0.0 \
+--lambda_outside_rgb 1.0 \
+--PGSR_depth \
+--multi_view_num 1 \
+--multi_view_weight_from_iter 7000 \
+--multi_view_weight_end_iter 19999 \
+--single_view_weight_from_iter 7000 \
+--single_view_weight_end_iter 19999 \
+--colmap_PGSR \
+--multi_view_ncc_weight 0.0 \
+--multi_view_geo_weight 0.0
 
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_metrics.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask_colmapOnlynormal \
+--iteration 30000 \
+--skip_train
 
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_PGSR.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask_colmapOnlynormal \
+--iteration 30000 \
+--eval \
+--skip_train
 
+[test] PSNR: 26.2969  SSIM: 0.9004  LPIPS: 0.1239 [17/09 12:07:41]
 
+2. 只对 curve点 单独加法线Loss
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python train.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask_curveOnlynormal \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/virtual_net2_noLight/curve_3dgs_init.ply \
+--sh_degree 0 \
+--curvegs_inject_iteration 20000 \
+--edge_non_edge_loss \
+--use_outside_Loss \
+--outside_dilation_radius 1 \
+--outside_alpha_margin 0.0 \
+--lambda_outside_rgb 1.0 \
+--PGSR_depth \
+--multi_view_num 1 \
+--multi_view_weight_from_iter 7000 \
+--multi_view_weight_end_iter 19999 \
+--single_view_weight_from_iter 7000 \
+--single_view_weight_end_iter 19999 \
+--curve_PGSR \
+--multi_view_ncc_weight 0.0 \
+--multi_view_geo_weight 0.0
 
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=4 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_metrics.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask_curveOnlynormal \
+--iteration 30000 \
+--skip_train
 
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=4 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_PGSR.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask_curveOnlynormal \
+--iteration 30000 \
+--eval \
+--skip_train
 
+[test] PSNR: 25.7811  SSIM: 0.8974  LPIPS: 0.1277 [17/09 12:51:19]
 
+3. 对colmap点加入法线Loss以及另两个Loss
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask_colmapPGSR_withNormal \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/virtual_net2_noLight/curve_3dgs_init.ply \
+--sh_degree 0 \
+--curvegs_inject_iteration 20000 \
+--edge_non_edge_loss \
+--use_outside_Loss \
+--outside_dilation_radius 1 \
+--outside_alpha_margin 0.0 \
+--lambda_outside_rgb 1.0 \
+--PGSR_depth \
+--multi_view_num 1 \
+--multi_view_weight_from_iter 7000 \
+--multi_view_weight_end_iter 19999 \
+--single_view_weight_from_iter 7000 \
+--single_view_weight_end_iter 19999 \
+--colmap_PGSR
 
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_metrics.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask_colmapPGSR_withNormal \
+--iteration 30000 \
+--skip_train
 
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_PGSR.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask_colmapPGSR_withNormal \
+--iteration 30000 \
+--eval \
+--skip_train
 
+4. 对curve点加入法线Loss以及另两个Loss
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python train.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask_curvePGSR_withNormal \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/virtual_net2_noLight/curve_3dgs_init.ply \
+--sh_degree 0 \
+--curvegs_inject_iteration 20000 \
+--edge_non_edge_loss \
+--use_outside_Loss \
+--outside_dilation_radius 1 \
+--outside_alpha_margin 0.0 \
+--lambda_outside_rgb 1.0 \
+--PGSR_depth \
+--multi_view_num 1 \
+--multi_view_weight_from_iter 7000 \
+--multi_view_weight_end_iter 19999 \
+--single_view_weight_from_iter 7000 \
+--single_view_weight_end_iter 19999 \
+--curve_PGSR
 
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=4 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_metrics.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask_curvePGSR_withNormal \
+--iteration 30000 \
+--skip_train
 
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=4 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_PGSR.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask_curvePGSR_withNormal \
+--iteration 30000 \
+--eval \
+--skip_train
 
+# 补做融合迭代数次数的消融实验
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python train.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask2 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/virtual_net2_noLight/curve_3dgs_init.ply \
+--sh_degree 0 \
+--curvegs_inject_iteration 15000 \
+--edge_non_edge_loss \
+--use_outside_Loss \
+--outside_dilation_radius 1 \
+--outside_alpha_margin 0.0 \
+--lambda_outside_rgb 1.0
 
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=4 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_metrics.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask2 \
+--iteration 30000 \
+--skip_train
 
+[test] PSNR: 26.5236  SSIM: 0.9063  LPIPS: 0.1156 [18/09 18:33:55]
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 python train.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask3 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/virtual_net2_noLight/curve_3dgs_init.ply \
+--sh_degree 0 \
+--curvegs_inject_iteration 10000 \
+--edge_non_edge_loss \
+--use_outside_Loss \
+--outside_dilation_radius 1 \
+--outside_alpha_margin 0.0 \
+--lambda_outside_rgb 1.0
 
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=4 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_metrics.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask3 \
+--iteration 30000 \
+--skip_train
 
+[test] PSNR: 27.2424  SSIM: 0.9224  LPIPS: 0.0943 [18/09 19:27:43]
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=5 python train.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask4 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/virtual_net2_noLight/curve_3dgs_init.ply \
+--sh_degree 0 \
+--curvegs_inject_iteration 5000 \
+--edge_non_edge_loss \
+--use_outside_Loss \
+--outside_dilation_radius 1 \
+--outside_alpha_margin 0.0 \
+--lambda_outside_rgb 1.0
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=5 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_metrics.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask4 \
+--iteration 30000 \
+--skip_train
+
+[test] PSNR: 27.6700  SSIM: 0.9263  LPIPS: 0.0858 [18/09 18:13:20]
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=5 python train.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask5 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/virtual_net2_noLight/curve_3dgs_init.ply \
+--sh_degree 0 \
+--curvegs_inject_iteration 1 \
+--edge_non_edge_loss \
+--use_outside_Loss \
+--outside_dilation_radius 1 \
+--outside_alpha_margin 0.0 \
+--lambda_outside_rgb 1.0
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=5 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_metrics.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask5 \
+--iteration 30000 \
+--skip_train
+
+[test] PSNR: 27.7096  SSIM: 0.9302  LPIPS: 0.0861 [18/09 18:54:00]
 
 
 

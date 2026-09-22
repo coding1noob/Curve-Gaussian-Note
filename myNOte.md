@@ -57,7 +57,7 @@ python -m pip install ./submodules/diff-cur-rasterization --no-build-isolation
 **如果出现报错："uint32_t" is undefined**
 在 submodules/diff-gaussian-rasterization/cuda_rasterizer/rasterizer_impl.h 里加入 #include <cstdint>
 
-python -m pip install ./submodules/simple-knn --no-build-isolation
+	python -m pip install ./submodules/simple-knn --no-build-isolation
 **如果报错出现：identifier "FLT_MAX" is undefined**
 在 submodules/simple-knn/simple_knn.cu 里加入 #include <cfloat>
 
@@ -66,8 +66,14 @@ python -m pip install ./submodules/fused-ssim --no-build-isolation
 pip install seaborn
 ### 注意，这一步必须前面做完才能做不然会卡死闪退！
 FORCE_CUDA=1 TORCH_CUDA_ARCH_LIST="8.9" pip install "git+https://github.com/facebookresearch/pytorch3d.git" --no-build-isolation
-pip install einops
-pip install scikit-image
+
+or
+
+FORCE_CUDA=1 TORCH_CUDA_ARCH_LIST="12.0" pip install "git+https://github.com/facebookresearch/pytorch3d.git" --no-build-isolation
+pip install einops -i https://pypi.mirrors.ustc.edu.cn/simple/
+pip install scikit-image -i https://pypi.mirrors.ustc.edu.cn/simple/
+pip install open3d -i https://pypi.mirrors.ustc.edu.cn/simple/
+python -m pip install scikit-learn -i https://pypi.mirrors.ustc.edu.cn/simple/
 
 ## 安装可视化程序
 

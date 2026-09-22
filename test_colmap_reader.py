@@ -114,6 +114,38 @@ def _min_area_rect_basis(points, up_axis=None):
     # 返回质心（用于后续把点云搬回原点）和这个旋转矩阵（用于把点云转到“对齐”坐标系）
     return centroid, Vt_final
 
+
+def _filter_points_by_camera_distance(points, colors, normals, cameras,
+                                      max_distance):
+    """Remove points whose nearest camera is too far away in 3D."""
+    if max_distance <= 0:
+        return points, colors, normals
+
+    camera_centers = _camera_centers_from_cameras(cameras)
+    if camera_centers.shape[0] == 0:
+        raise ValueError("camera_point_distance requires at least one camera")
+
+    nearest_distances, _ = cKDTree(camera_centers).query(
+        points,
+        k=1,
+        p=2,
+        workers=-1,
+    )
+    keep_mask = nearest_distances <= max_distance
+    kept_count = int(np.count_nonzero(keep_mask))
+    removed_count = int(points.shape[0] - kept_count)
+    print(
+        "camera 3D distance filter: "
+        f"threshold={max_distance}, kept={kept_count}, removed={removed_count}"
+    )
+
+    if kept_count == 0:
+        raise ValueError(
+            "camera_point_distance removed every COLMAP point; increase the threshold"
+        )
+
+    return points[keep_mask], colors[keep_mask], normals[keep_mask]
+
 def Simplyfill(points, colors, normals, grid_resX=50, grid_resY=50, grid_resZ=50, up_axis=None):
     # 和 Simplyfill2 使用同一套贴合场景的坐标系，但不做分段过滤，直接填满整个局部 bounding box
     clean_centroid, Vt = _min_area_rect_basis(points, up_axis=up_axis)
@@ -641,7 +673,14 @@ def main():
                         help="Use the least-variance camera-trajectory axis for Simplyfill2/Simplyfill3.")
     # 最后增加一下一直没增加的
     parser.add_argument("--outlier_nb_points", type=int, default=30,
-                    help="Number of neighbors to consider for outlier removal.")  
+                    help="Minimum neighbor count used by radius outlier removal.")
+    parser.add_argument("--outlier_nb_neighbors", type=int, default=30,
+                    help="Number of neighbors used by statistical outlier removal.")
+    parser.add_argument("--outlier_std_ratio", type=float, default=2.0,
+                    help="Standard deviation ratio used by statistical outlier removal.")
+    # 当参数小于等于 0 时关闭过滤，保持原有行为
+    parser.add_argument("--camera_point_distance", type=float, default=0.0,
+                    help="Maximum 3D distance from a COLMAP point to its nearest camera; <= 0 disables filtering.")
       
     parser.add_argument("--fill_grid_resX", type=int, default=100,
                     help="Grid resolution in X direction for fill points.")
@@ -704,7 +743,10 @@ def main():
         # remove_statistical_outlier: 每个点到最近 nb_neighbors 个邻居的平均距离，
         # 若超过 全局均值 + std_ratio*标准差 则视为离群点删除，能滤掉主体点云外围
         # 整体飘远但内部略微聚集的杂乱点簇
-        pcd_clean, _ = pcd_clean.remove_statistical_outlier(nb_neighbors=30, std_ratio=2.0)
+        pcd_clean, _ = pcd_clean.remove_statistical_outlier(
+            nb_neighbors=args.outlier_nb_neighbors,
+            std_ratio=args.outlier_std_ratio,
+        )
         points = np.asarray(pcd_clean.points)
         colors = np.asarray(pcd_clean.colors)
         normals = np.zeros_like(points)
@@ -747,6 +789,13 @@ def main():
                         print("trajectory_root 启用失败: 训练相机数量少于 3，仍使用点云 PCA 的 z 轴")
                     else:
                         print(f"trajectory_root z/up axis: {trajectory_up_axis}")
+                points, colors, normals = _filter_points_by_camera_distance(
+                    points,
+                    colors,
+                    normals,
+                    scene_info.train_cameras,
+                    args.camera_point_distance,
+                )
                 points, colors, normals = Simplyfill3(
                     points, colors, normals,
                     grid_resX=args.fill_grid_resX, grid_resY=args.fill_grid_resY, grid_resZ=args.fill_grid_resZ,

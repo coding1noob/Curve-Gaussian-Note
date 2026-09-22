@@ -832,6 +832,16 @@ python render_metrics.py \
 
 [test] PSNR: 26.1045  SSIM: 0.9013  LPIPS: 0.1237 [11/09 11:22:00]
 
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=5 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_PGSR.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_mask \
+--iteration 30000 \
+--eval \
+--skip_train
+
 9. 只融合curveGS但不mask
 
 unset CUDA_VISIBLE_DEVICES
@@ -851,6 +861,17 @@ python render_metrics.py \
 -m /data2/jhc/output/3dgs_output/910/Curve_nomask \
 --iteration 30000 \
 --skip_train
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=5 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_PGSR.py \
+-s /data1/jhc/datasets/virtual_net2_noLight \
+-m /data2/jhc/output/3dgs_output/910/Curve_nomask \
+--iteration 30000 \
+--eval \
+--skip_train
+
 
 10. 复杂地面nolight场景，跑baseline
 
