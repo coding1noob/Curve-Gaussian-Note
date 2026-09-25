@@ -60,6 +60,12 @@ class _RasterizeGaussians(torch.autograd.Function):
     ):
 
         # Restructure arguments the way that the C++ lib expects them
+        if raster_settings.render_distortion and cov3Ds_precomp.numel() != 0:
+            raise ValueError(
+                "render_distortion requires CUDA-computed covariance; "
+                "cov3D_precomp is not supported"
+            )
+
         args = (
             raster_settings.bg, 
             means3D,
@@ -82,20 +88,21 @@ class _RasterizeGaussians(torch.autograd.Function):
             raster_settings.prefiltered,
             raster_settings.antialiasing,
             raster_settings.render_geo,
+            raster_settings.render_distortion,
             raster_settings.debug
         )
 
         # Invoke C++/CUDA rasterizer
-        num_rendered, color, radii, geomBuffer, binningBuffer, imgBuffer, invdepths, out_all_map = _C.rasterize_gaussians(*args)
+        num_rendered, color, radii, geomBuffer, binningBuffer, imgBuffer, invdepths, out_all_map, out_distortion = _C.rasterize_gaussians(*args)
 
         # Keep relevant tensors for backward
         ctx.raster_settings = raster_settings
         ctx.num_rendered = num_rendered
         ctx.save_for_backward(out_all_map, colors_precomp, all_maps,  means3D, scales, rotations, cov3Ds_precomp, radii, sh, opacities, geomBuffer, binningBuffer, imgBuffer)
-        return color, radii, invdepths, out_all_map
+        return color, radii, invdepths, out_all_map, out_distortion
 
     @staticmethod
-    def backward(ctx, grad_out_color, _, grad_out_depth, grad_out_all_map):
+    def backward(ctx, grad_out_color, _, grad_out_depth, grad_out_all_map, grad_out_distortion):
 
         # Restore necessary values from context
         num_rendered = ctx.num_rendered
@@ -103,8 +110,10 @@ class _RasterizeGaussians(torch.autograd.Function):
         all_map_pixels, colors_precomp, all_maps, means3D, scales, rotations, cov3Ds_precomp, radii, sh, opacities, geomBuffer, binningBuffer, imgBuffer = ctx.saved_tensors
 
         # Restructure args as C++ method expects them
-        args = (raster_settings.bg,
-                all_map_pixels,
+        if grad_out_distortion is None:
+            grad_out_distortion = means3D.new_empty((0,))
+
+        args = (
                 means3D, 
                 radii, 
                 colors_precomp,
@@ -121,6 +130,7 @@ class _RasterizeGaussians(torch.autograd.Function):
                 grad_out_color,
                 grad_out_depth,
                 grad_out_all_map,
+                grad_out_distortion,
                 sh, 
                 raster_settings.sh_degree, 
                 raster_settings.campos,
@@ -130,6 +140,7 @@ class _RasterizeGaussians(torch.autograd.Function):
                 imgBuffer,
                 raster_settings.antialiasing,
                 raster_settings.render_geo,
+                raster_settings.render_distortion,
                 raster_settings.debug)
 
         # Compute gradients for relevant tensors by invoking backward method
@@ -165,6 +176,7 @@ class GaussianRasterizationSettings(NamedTuple):
     debug : bool
     antialiasing : bool
     render_geo: bool
+    render_distortion: bool = False
 
 class GaussianRasterizer(nn.Module):
     def __init__(self, raster_settings):

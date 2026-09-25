@@ -304,6 +304,19 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
         # loss: 包含 RGB、几何和后续正则项的总 loss. Ll1: 传给日志系统的基础图像/几何 loss
         loss, Ll1 = Loss_part(dataset, viewpoint_cam, image, rend_alpha, iteration, opt)
 
+        distortion_active = (
+            getattr(opt, "distortion_loss", False)
+            and getattr(opt, "lambda_distortion", 0.0) > 0
+            and iteration >= getattr(opt, "distortion_from_iter", 0)
+            and (
+                getattr(opt, "distortion_end_iter", -1) < 0
+                or iteration <= opt.distortion_end_iter
+            )
+        )
+        distortion_raw = render_pkg.get("distortion")
+        if distortion_active and distortion_raw is not None:
+            loss = loss + opt.lambda_distortion * distortion_raw.mean()
+
 
         if dataset.SGCR and opt.lambda_consis > 0:
             consistency = consistency_loss(colors_precomp, gaussians.get_opacity)

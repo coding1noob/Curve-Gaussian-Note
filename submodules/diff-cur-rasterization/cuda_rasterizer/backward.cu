@@ -318,13 +318,15 @@ __global__ void computeCov2DCUDA(int P,
 	// t = transformPoint4x3(mean, view_matrix);
 	float3 dL_dmean = transformVec4x3Transpose({ dL_dtx, dL_dty, dL_dtz }, view_matrix);
 
-	// Gradients of loss w.r.t. Gaussian means, but only the portion 
+	// Gradients of loss w.r.t. Gaussian means, but only the portion
 	// that is caused because the mean affects the covariance matrix.
 	// Additional mean gradient is accumulated in BACKWARD::preprocess.
-	dL_dmeans[idx] = dL_dmean;
+	dL_dmeans[idx].x += dL_dmean.x;
+	dL_dmeans[idx].y += dL_dmean.y;
+	dL_dmeans[idx].z += dL_dmean.z;
 }
 
-// Backward pass for the conversion of scale and rotation to a 
+// Backward pass for the conversion of scale and rotation to a
 // 3D covariance matrix for each Gaussian. 
 __device__ void computeCov3D(int idx, const glm::vec3 scale, float mod, const glm::vec4 rot, const float* dL_dcov3Ds, glm::vec3* dL_dscales, glm::vec4* dL_drots)
 {
@@ -447,6 +449,72 @@ __global__ void preprocessCUDA(
 		computeCov3D(idx, scales[idx], scale_modifier, rotations[idx], dL_dcov3D, dL_dscale, dL_drot);
 }
 
+// Convert the distortion depth gradient through the B (translation) part of
+// view2gaussian.  The covariance and rotation paths are intentionally
+// detached: distortion is allowed to move means only.
+__device__ void accumulateDistortionMeanGradient(
+	const glm::vec3 scale,
+	const float scale_modifier,
+	const glm::vec4 rot,
+	const float3& mean,
+	const float* viewmatrix,
+	const glm::vec3& dL_dB,
+	glm::vec3* dL_dmean)
+{
+	glm::vec4 q = rot;
+	float r = q.x;
+	float x = q.y;
+	float y = q.z;
+	float z = q.w;
+	glm::mat3 R = glm::mat3(
+		1.f - 2.f * (y * y + z * z), 2.f * (x * y - r * z), 2.f * (x * z + r * y),
+		2.f * (x * y + r * z), 1.f - 2.f * (x * x + z * z), 2.f * (y * z - r * x),
+		2.f * (x * z - r * y), 2.f * (y * z + r * x), 1.f - 2.f * (x * x + y * y));
+
+	glm::mat4 G2W = glm::mat4(
+		R[0][0], R[1][0], R[2][0], 0.f,
+		R[0][1], R[1][1], R[2][1], 0.f,
+		R[0][2], R[1][2], R[2][2], 0.f,
+		mean.x, mean.y, mean.z, 1.f);
+	glm::mat4 W2V = glm::mat4(
+		viewmatrix[0], viewmatrix[1], viewmatrix[2], viewmatrix[3],
+		viewmatrix[4], viewmatrix[5], viewmatrix[6], viewmatrix[7],
+		viewmatrix[8], viewmatrix[9], viewmatrix[10], viewmatrix[11],
+		viewmatrix[12], viewmatrix[13], viewmatrix[14], viewmatrix[15]);
+	glm::mat4 G2V = W2V * G2W;
+	glm::mat3 R_transpose = glm::mat3(
+		G2V[0][0], G2V[1][0], G2V[2][0],
+		G2V[0][1], G2V[1][1], G2V[2][1],
+		G2V[0][2], G2V[1][2], G2V[2][2]);
+
+	double3 inv_s2 = {
+		1.0 / ((double)(scale.x * scale_modifier) * (scale.x * scale_modifier) + 1e-7),
+		1.0 / ((double)(scale.y * scale_modifier) * (scale.y * scale_modifier) + 1e-7),
+		1.0 / ((double)(scale.z * scale_modifier) * (scale.z * scale_modifier) + 1e-7)};
+	glm::mat3 inv_s2_R(
+		inv_s2.x * R_transpose[0][0], inv_s2.y * R_transpose[0][1], inv_s2.z * R_transpose[0][2],
+		inv_s2.x * R_transpose[1][0], inv_s2.y * R_transpose[1][1], inv_s2.z * R_transpose[1][2],
+		inv_s2.x * R_transpose[2][0], inv_s2.y * R_transpose[2][1], inv_s2.z * R_transpose[2][2]);
+
+	glm::vec3 t(G2V[3][0], G2V[3][1], G2V[3][2]);
+	glm::vec3 t2 = -R_transpose * t;
+	glm::vec3 dL_dt2(
+		dL_dB.x * inv_s2_R[0][0] + dL_dB.y * inv_s2_R[1][0] + dL_dB.z * inv_s2_R[2][0],
+		dL_dB.x * inv_s2_R[0][1] + dL_dB.y * inv_s2_R[1][1] + dL_dB.z * inv_s2_R[2][1],
+		dL_dB.x * inv_s2_R[0][2] + dL_dB.y * inv_s2_R[1][2] + dL_dB.z * inv_s2_R[2][2]);
+	(void)t2;
+
+	glm::mat3 G2V_R_t = glm::mat3(
+		G2V[0][0], G2V[1][0], G2V[2][0],
+		G2V[0][1], G2V[1][1], G2V[2][1],
+		G2V[0][2], G2V[1][2], G2V[2][2]);
+	glm::vec3 dL_dG2V_t = -dL_dt2 * G2V_R_t;
+	float3 dL_dmean_world = transformVec4x3Transpose(
+		{dL_dG2V_t.x, dL_dG2V_t.y, dL_dG2V_t.z}, viewmatrix);
+	*dL_dmean += glm::vec3(dL_dmean_world.x, dL_dmean_world.y, dL_dmean_world.z);
+}
+
+
 // Backward version of the rendering procedure.
 template <uint32_t C, uint32_t MAP_N>
 __global__ void __launch_bounds__(BLOCK_X * BLOCK_Y)
@@ -466,13 +534,23 @@ renderCUDA(
 	const float* __restrict__ dL_dpixels,
 	const float* __restrict__ dL_invdepths,
 	const float* __restrict__ dL_dout_all_maps,
+	const float* __restrict__ dL_dout_distortion,
 	float3* __restrict__ dL_dmean2D,
 	float4* __restrict__ dL_dconic2D,
 	float* __restrict__ dL_dopacity,
 	float* __restrict__ dL_dcolors,
 	float* __restrict__ dL_dinvdepths,
 	float* __restrict__ dL_dall_map,
-	const bool render_geo
+	const float* __restrict__ view2gaussian,
+	const float3* __restrict__ means3D,
+	const glm::vec3* __restrict__ scales,
+	const glm::vec4* __restrict__ rotations,
+	const float* __restrict__ viewmatrix,
+	const float scale_modifier,
+	float3* __restrict__ dL_dmeans3D,
+	const float focal_x, const float focal_y,
+	const bool render_geo,
+	const bool render_distortion
 )
 {
 	// We rasterize again. Compute necessary block info.
@@ -482,13 +560,17 @@ renderCUDA(
 	const uint2 pix_max = { min(pix_min.x + BLOCK_X, W), min(pix_min.y + BLOCK_Y , H) };
 	const uint2 pix = { pix_min.x + block.thread_index().x, pix_min.y + block.thread_index().y };
 	const uint32_t pix_id = W * pix.y + pix.x;
+	// Keep the screen-space Gaussian distance identical to the forward pass.
 	const float2 pixf = { (float)pix.x, (float)pix.y };
 
 	const bool inside = pix.x < W&& pix.y < H;
 	const uint2 range = ranges[block.group_index().y * horizontal_blocks + block.group_index().x];
 
-	const int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
+	const float2 ray = {
+		((float)pix.x + 0.5f - W / 2.0f) / focal_x,
+		((float)pix.y + 0.5f - H / 2.0f) / focal_y};
 
+	const int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
 	bool done = !inside;
 	int toDo = range.y - range.x;
 
@@ -498,12 +580,23 @@ renderCUDA(
 	__shared__ float collected_colors[C * BLOCK_SIZE];
 	__shared__ float collected_depths[BLOCK_SIZE];
     __shared__ float collected_all_maps[MAP_N * BLOCK_SIZE];
+	__shared__ float collected_view2gaussian[BLOCK_SIZE * 10];
 
 
 	// In the forward, we stored the final value for T, the
 	// product of all (1 - alpha) factors. 
 	const float T_final = inside ? final_Ts[pix_id] : 0;
 	float T = T_final;
+	const int image_size = H * W;
+	float distortion_dist1 = (inside && render_distortion) ? final_Ts[pix_id + image_size] : 0.0f;
+	float distortion_dist2 = (inside && render_distortion) ? final_Ts[pix_id + 2 * image_size] : 0.0f;
+	float distortion_raw = (inside && render_distortion) ? final_Ts[pix_id + 3 * image_size] : 0.0f;
+	const float distortion_denom = (1.0f - T_final) * (1.0f - T_final) + 1e-7f;
+	const float dL_draw = (inside && render_distortion && dL_dout_distortion != nullptr)
+		? dL_dout_distortion[pix_id] / distortion_denom
+		: 0.0f;
+	float dL_ddist1 = 0.0f;
+	float dL_ddist2 = 0.0f;
 
 	// We start from the back. The ID of the last contributing
 	// Gaussian is known from each pixel from the forward.
@@ -564,6 +657,9 @@ renderCUDA(
 				for (int i = 0; i < MAP_N; i++)
 					collected_all_maps[i * BLOCK_SIZE + block.thread_rank()] = all_maps[coll_id * MAP_N + i];
 			}
+			if (render_distortion)
+				for (int i = 0; i < 10; ++i)
+					collected_view2gaussian[10 * block.thread_rank() + i] = view2gaussian[coll_id * 10 + i];
 
 		}
 		block.sync();
@@ -596,9 +692,60 @@ renderCUDA(
 			// Propagate gradients to per-Gaussian colors and keep
 			// gradients w.r.t. alpha (blending factor for a Gaussian/pixel
 			// pair).
-			float dL_dalpha = 0.0f;
 			const int global_id = collected_id[j];
-			for (int ch = 0; ch < C; ch++)
+
+				// Distortion is differentiated with fixed alpha and transmittance.
+				// Reverse the GOF recurrence, then send only the B/mean path.
+				if (render_distortion && dL_draw != 0.0f)
+				{
+					const float* v = collected_view2gaussian + 10 * j;
+					const float rx = ray.x;
+					const float ry = ray.y;
+					const float n0 = v[0] * rx + v[1] * ry + v[2];
+					const float n1 = v[1] * rx + v[3] * ry + v[4];
+					const float n2 = v[2] * rx + v[4] * ry + v[5];
+					const double AA = (double)rx * n0 + (double)ry * n1 + n2;
+					const double BB = 2.0 * ((double)v[6] * rx + (double)v[7] * ry + v[8]);
+					const float t = (AA > 1e-12) ? (float)(-BB / (2.0 * AA)) : -1.0f;
+					if (isfinite(t) && t > NEAR_PLANE)
+					{
+						const float m = (FAR_PLANE * t - FAR_PLANE * NEAR_PLANE) /
+							((FAR_PLANE - NEAR_PLANE) * t);
+						const float w = alpha * T;
+						const float A = 1.0f - T;
+						const float d1_before = distortion_dist1 - m * w;
+						const float d2_before = distortion_dist2 - m * m * w;
+						const float recurrence = m * m * A + d2_before - 2.0f * m * d1_before;
+
+						const float dL_dm = dL_draw * w * (2.0f * m * A - 2.0f * d1_before)
+							+ dL_ddist1 * w + dL_ddist2 * 2.0f * m * w;
+						const float dL_dBB = dL_dm
+							* (FAR_PLANE * NEAR_PLANE /
+								((FAR_PLANE - NEAR_PLANE) * t * t))
+							* (-1.0f / (2.0f * (float)AA));
+						const glm::vec3 dL_dB(
+							dL_dBB * 2.0f * rx,
+							dL_dBB * 2.0f * ry,
+							dL_dBB * 2.0f);
+
+						glm::vec3 dL_dmean(0.0f);
+						accumulateDistortionMeanGradient(
+							scales[global_id], scale_modifier, rotations[global_id],
+							means3D[global_id], viewmatrix, dL_dB, &dL_dmean);
+						atomicAdd(&dL_dmeans3D[global_id].x, dL_dmean.x);
+						atomicAdd(&dL_dmeans3D[global_id].y, dL_dmean.y);
+						atomicAdd(&dL_dmeans3D[global_id].z, dL_dmean.z);
+
+						distortion_raw -= recurrence * w;
+						distortion_dist1 = d1_before;
+						distortion_dist2 = d2_before;
+						dL_ddist1 -= 2.0f * m * dL_draw * w;
+						dL_ddist2 += dL_draw * w;
+					}
+				}
+
+				float dL_dalpha = 0.0f;
+				for (int ch = 0; ch < C; ch++)
 			{
 				const float c = collected_colors[ch * BLOCK_SIZE + j];
 				// Update last color (to be used in the next iteration)
@@ -758,6 +905,7 @@ void BACKWARD::render(
 	const float4* conic_opacity,
 	const float* colors,
 	const float* depths,
+	const float* view2gaussian,
     const float* all_maps,
 	const float* all_map_pixels,
 	const float* final_Ts,
@@ -765,13 +913,22 @@ void BACKWARD::render(
 	const float* dL_dpixels,
 	const float* dL_invdepths,
 	const float* dL_dout_all_map,
+	const float* dL_dout_distortion,
 	float3* dL_dmean2D,
 	float4* dL_dconic2D,
 	float* dL_dopacity,
 	float* dL_dcolors,
 	float* dL_dinvdepths,
 	float* dL_dall_map,
-	const bool render_geo)
+	const float3* means3D,
+	const glm::vec3* scales,
+	const glm::vec4* rotations,
+	const float* viewmatrix,
+	const float scale_modifier,
+	float3* dL_dmeans3D,
+	const float focal_x, const float focal_y,
+	const bool render_geo,
+	const bool render_distortion)
 {
 	renderCUDA<NUM_CHANNELS, NUM_ALL_MAP> << <grid, block >> >(
 		ranges,
@@ -789,12 +946,22 @@ void BACKWARD::render(
 		dL_dpixels,
 		dL_invdepths,
 		dL_dout_all_map,
+		dL_dout_distortion,
 		dL_dmean2D,
 		dL_dconic2D,
 		dL_dopacity,
 		dL_dcolors,
 		dL_dinvdepths,
         dL_dall_map,
-        render_geo
+        view2gaussian,
+        means3D,
+        scales,
+        rotations,
+        viewmatrix,
+        scale_modifier,
+        dL_dmeans3D,
+        focal_x, focal_y,
+        render_geo,
+        render_distortion
 		);
 }

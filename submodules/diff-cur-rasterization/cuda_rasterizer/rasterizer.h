@@ -52,8 +52,10 @@ namespace CudaRasterizer
 			float* out_color,
 			float* depth,
             float* out_all_map,
+			float* out_distortion,
 			bool antialiasing,
 			const bool render_geo,
+			const bool render_distortion,
 			int* radii = nullptr,
 			bool debug = false);
 
@@ -82,6 +84,7 @@ namespace CudaRasterizer
 			const float* dL_dpix,
 			const float* dL_invdepths,
 			const float* dL_dout_all_map,
+			const float* dL_dout_distortion,
 			float* dL_dmean2D,
 			float* dL_dconic,
 			float* dL_dopacity,
@@ -95,6 +98,7 @@ namespace CudaRasterizer
 			float* dL_dall_map,
 			bool antialiasing,
 			const bool render_geo,
+			const bool render_distortion,
 			bool debug);
 	};
 };

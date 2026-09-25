@@ -151,8 +151,49 @@ __device__ void computeCov3D(const glm::vec3 scale, float mod, const glm::vec4 r
 	cov3D[5] = Sigma[2][2];
 }
 
-// Perform initial steps for each Gaussian prior to rasterization.
-template<int C>
+__device__ void computeView2Gaussian(const glm::vec3 scale, const float3& mean, const glm::vec4 rot, const float* viewmatrix, float* view2gaussian)
+{
+    glm::vec4 q = rot;
+    float r = q.x, x = q.y, y = q.z, z = q.w;
+    glm::mat3 R = glm::mat3(
+        1.f - 2.f * (y * y + z * z), 2.f * (x * y - r * z), 2.f * (x * z + r * y),
+        2.f * (x * y + r * z), 1.f - 2.f * (x * x + z * z), 2.f * (y * z - r * x),
+        2.f * (x * z - r * y), 2.f * (y * z + r * x), 1.f - 2.f * (x * x + y * y));
+    glm::mat4 G2W = glm::mat4(
+        R[0][0], R[1][0], R[2][0], 0.f,
+        R[0][1], R[1][1], R[2][1], 0.f,
+        R[0][2], R[1][2], R[2][2], 0.f,
+        mean.x, mean.y, mean.z, 1.f);
+    glm::mat4 W2V = glm::mat4(
+        viewmatrix[0], viewmatrix[1], viewmatrix[2], viewmatrix[3],
+        viewmatrix[4], viewmatrix[5], viewmatrix[6], viewmatrix[7],
+        viewmatrix[8], viewmatrix[9], viewmatrix[10], viewmatrix[11],
+        viewmatrix[12], viewmatrix[13], viewmatrix[14], viewmatrix[15]);
+    glm::mat4 G2V = W2V * G2W;
+    glm::mat3 Rt = glm::mat3(
+        G2V[0][0], G2V[1][0], G2V[2][0],
+        G2V[0][1], G2V[1][1], G2V[2][1],
+        G2V[0][2], G2V[1][2], G2V[2][2]);
+    glm::vec3 t(G2V[3][0], G2V[3][1], G2V[3][2]);
+    glm::vec3 t2 = -Rt * t;
+    double3 inv_s2 = {
+        1.0 / ((double)scale.x * scale.x + 1e-7),
+        1.0 / ((double)scale.y * scale.y + 1e-7),
+        1.0 / ((double)scale.z * scale.z + 1e-7)};
+    double C = t2.x * t2.x * inv_s2.x + t2.y * t2.y * inv_s2.y + t2.z * t2.z * inv_s2.z;
+    glm::mat3 inv_s2_R(
+        inv_s2.x * Rt[0][0], inv_s2.y * Rt[0][1], inv_s2.z * Rt[0][2],
+        inv_s2.x * Rt[1][0], inv_s2.y * Rt[1][1], inv_s2.z * Rt[1][2],
+        inv_s2.x * Rt[2][0], inv_s2.y * Rt[2][1], inv_s2.z * Rt[2][2]);
+    glm::vec3 B = t2 * inv_s2_R;
+    glm::mat3 Sigma = glm::transpose(Rt) * inv_s2_R;
+    view2gaussian[0] = Sigma[0][0]; view2gaussian[1] = Sigma[0][1]; view2gaussian[2] = Sigma[0][2];
+    view2gaussian[3] = Sigma[1][1]; view2gaussian[4] = Sigma[1][2]; view2gaussian[5] = Sigma[2][2];
+    view2gaussian[6] = B.x; view2gaussian[7] = B.y; view2gaussian[8] = B.z; view2gaussian[9] = C;
+}
+
+
+template <uint32_t CHANNELS>
 __global__ void preprocessCUDA(int P, int D, int M,
 	const float* orig_points,
 	const glm::vec3* scales,
@@ -175,10 +216,12 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	float* cov3Ds,
 	float* rgb,
 	float4* conic_opacity,
+	float* view2gaussian,
 	const dim3 grid,
 	uint32_t* tiles_touched,
 	bool prefiltered,
-	bool antialiasing)
+	bool antialiasing,
+	const bool render_distortion)
 {
 	auto idx = cg::this_grid().thread_rank();
 	if (idx >= P)
@@ -256,10 +299,12 @@ __global__ void preprocessCUDA(int P, int D, int M,
 // 		rgb[idx * C + 0] = result.x;
 // 		rgb[idx * C + 1] = result.y;
 // 		rgb[idx * C + 2] = result.z;
-        rgb[idx* C] = result;
+        rgb[idx * CHANNELS] = result;
 	}
 
 	// Store some useful helper data for the next steps.
+	if (render_distortion)
+		computeView2Gaussian(scales[idx] * scale_modifier, p_orig, rotations[idx], viewmatrix, view2gaussian + idx * 10);
 	depths[idx] = p_view.z;
 	radii[idx] = my_radius;
 	points_xy_image[idx] = point_image;
@@ -285,6 +330,7 @@ renderCUDA(
 	const float2* __restrict__ points_xy_image,
 	const float* __restrict__ features,
 	const float* __restrict__ all_map,
+	const float* __restrict__ view2gaussian,
 	const float4* __restrict__ conic_opacity,
 	float* __restrict__ final_T,
 	uint32_t* __restrict__ n_contrib,
@@ -293,7 +339,10 @@ renderCUDA(
 	const float* __restrict__ depths,
 	float* __restrict__ invdepth,
 	float* __restrict__ out_all_map,
-	const bool render_geo)
+	float* __restrict__ out_distortion,
+	const float focal_x, const float focal_y,
+	const bool render_geo,
+	const bool render_distortion)
 {
 	// Identify current tile and associated min/max pixel range.
 	auto block = cg::this_thread_block();
@@ -303,6 +352,7 @@ renderCUDA(
 	uint2 pix = { pix_min.x + block.thread_index().x, pix_min.y + block.thread_index().y };
 	uint32_t pix_id = W * pix.y + pix.x;
 	float2 pixf = { (float)pix.x, (float)pix.y };
+	float2 ray = { (pixf.x + 0.5f - W / 2.0f) / focal_x, (pixf.y + 0.5f - H / 2.0f) / focal_y };
 
 	// Check if this thread is associated with a valid pixel or outside.
 	bool inside = pix.x < W&& pix.y < H;
@@ -318,6 +368,7 @@ renderCUDA(
 	__shared__ int collected_id[BLOCK_SIZE];
 	__shared__ float2 collected_xy[BLOCK_SIZE];
 	__shared__ float4 collected_conic_opacity[BLOCK_SIZE];
+	__shared__ float collected_view2gaussian[BLOCK_SIZE * 10];
 
 	// Initialize helper variables
 	float T = 1.0f;
@@ -326,6 +377,9 @@ renderCUDA(
 	float C[CHANNELS] = { 0 };
     float All_map[ALL_MAP] = { 0 };
 	float expected_invdepth = 0.0f;
+	float dist1 = 0.0f;
+	float dist2 = 0.0f;
+	float distortion = 0.0f;
 
 	// Iterate over batches until all done or range is complete
 	for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
@@ -343,6 +397,9 @@ renderCUDA(
 			collected_id[block.thread_rank()] = coll_id;
 			collected_xy[block.thread_rank()] = points_xy_image[coll_id];
 			collected_conic_opacity[block.thread_rank()] = conic_opacity[coll_id];
+			if (render_distortion)
+				for (int ii = 0; ii < 10; ++ii)
+					collected_view2gaussian[10 * block.thread_rank() + ii] = view2gaussian[coll_id * 10 + ii];
 		}
 		block.sync();
 
@@ -374,6 +431,26 @@ renderCUDA(
 				done = true;
 				continue;
 			}
+			if (render_distortion)
+			{
+				const float* v = collected_view2gaussian + 10 * j;
+				const float rx = ray.x, ry = ray.y;
+				const float n0 = v[0] * rx + v[1] * ry + v[2];
+				const float n1 = v[1] * rx + v[3] * ry + v[4];
+				const float n2 = v[2] * rx + v[4] * ry + v[5];
+				const double AA = rx * n0 + ry * n1 + n2;
+				const double BB = 2.0 * (v[6] * rx + v[7] * ry + v[8]);
+				const float t = (AA > 1e-12) ? (float)(-BB / (2.0 * AA)) : -1.0f;
+				if (isfinite(t) && t > NEAR_PLANE)
+				{
+					const float m = (FAR_PLANE * t - FAR_PLANE * NEAR_PLANE) / ((FAR_PLANE - NEAR_PLANE) * t);
+					const float w = alpha * T;
+					const float A = 1.0f - T;
+					distortion += (m * m * A + dist2 - 2.0f * m * dist1) * w;
+					dist1 += m * w;
+					dist2 += m * m * w;
+				}
+			}
 
 			// Eq. (3) from 3D Gaussian splatting paper.
 			for (int ch = 0; ch < CHANNELS; ch++)
@@ -401,6 +478,14 @@ renderCUDA(
 	{
 		final_T[pix_id] = T;
 		n_contrib[pix_id] = last_contributor;
+		if (render_distortion)
+		{
+			final_T[pix_id + H * W] = dist1;
+			final_T[pix_id + 2 * H * W] = dist2;
+			final_T[pix_id + 3 * H * W] = distortion;
+			n_contrib[pix_id + H * W] = 0;
+			out_distortion[pix_id] = distortion / ((1.0f - T) * (1.0f - T) + 1e-7f);
+		}
 		for (int ch = 0; ch < CHANNELS; ch++)
 			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
 
@@ -424,15 +509,19 @@ void FORWARD::render(
 	const float2* means2D,
 	const float* colors,
     const float* all_map,
+	const float* view2gaussian,
 	const float4* conic_opacity,
 	float* final_T,
 	uint32_t* n_contrib,
 	const float* bg_color,
 	float* out_color,
-	float* depths,
+	const float* depths,
 	float* depth,
 	float* out_all_map,
-	const bool render_geo)
+	float* out_distortion,
+	const float focal_x, const float focal_y,
+	const bool render_geo,
+	const bool render_distortion)
 {
 	renderCUDA<NUM_CHANNELS, NUM_ALL_MAP> << <grid, block >> > (
 		ranges,
@@ -441,15 +530,19 @@ void FORWARD::render(
 		means2D,
 		colors,
 		all_map,
+		view2gaussian,
 		conic_opacity,
 		final_T,
 		n_contrib,
 		bg_color,
 		out_color,
-		depths, 
+		depths,
 		depth,
 		out_all_map,
-		render_geo);
+		out_distortion,
+		focal_x, focal_y,
+		render_geo,
+		render_distortion);
 }
 
 void FORWARD::preprocess(int P, int D, int M,
@@ -474,10 +567,12 @@ void FORWARD::preprocess(int P, int D, int M,
 	float* cov3Ds,
 	float* rgb,
 	float4* conic_opacity,
+	float* view2gaussian,
 	const dim3 grid,
 	uint32_t* tiles_touched,
 	bool prefiltered,
-	bool antialiasing)
+	bool antialiasing,
+	const bool render_distortion)
 {
 	preprocessCUDA<NUM_CHANNELS> << <(P + 255) / 256, 256 >> > (
 		P, D, M,
@@ -502,9 +597,11 @@ void FORWARD::preprocess(int P, int D, int M,
 		cov3Ds,
 		rgb,
 		conic_opacity,
+		view2gaussian,
 		grid,
 		tiles_touched,
 		prefiltered,
-		antialiasing
+		antialiasing,
+		render_distortion
 		);
 }

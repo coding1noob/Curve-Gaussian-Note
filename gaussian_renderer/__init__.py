@@ -50,6 +50,7 @@ def render(viewpoint_camera, pc : GaussianCurveModel, pipe, bg_color : torch.Ten
         debug=pipe.debug,
         antialiasing=pipe.antialiasing,
         render_geo=pipe.render_geo,
+        render_distortion=getattr(pipe, "render_distortion", False),
     )
 
     rasterizer = GaussianRasterizer(raster_settings=raster_settings)
@@ -195,7 +196,7 @@ def render(viewpoint_camera, pc : GaussianCurveModel, pipe, bg_color : torch.Ten
     #         cov3D_precomp = cov3D_precomp)
 
     # 修改后:
-    rendered_image, radii, depth_image, out_all_map = rasterizer(
+    rendered_image, radii, depth_image, out_all_map, distortion_map = rasterizer(
         means3D=means3D,
         means2D=means2D,
         shs=None,
@@ -233,6 +234,7 @@ def render(viewpoint_camera, pc : GaussianCurveModel, pipe, bg_color : torch.Ten
         "depth" : depth_image,
         "rend_dir": rendered_dir,
         "rend_alpha": rendered_alpha,
+        "distortion": distortion_map,
         "colors_precomp": colors_precomp,
     }
     

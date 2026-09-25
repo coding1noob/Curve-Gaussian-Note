@@ -38,6 +38,7 @@ namespace CudaRasterizer
 		float* cov3D;
 		float4* conic_opacity;
 		float* rgb;
+		float* view2gaussian;
 		uint32_t* point_offsets;
 		uint32_t* tiles_touched;
 
@@ -48,7 +49,8 @@ namespace CudaRasterizer
 	{
 		uint2* ranges;
 		uint32_t* n_contrib;
-		float* accum_alpha;
+		float* accum_alpha; // plane 0: final T; planes 1-3: distortion state
+
 
 		static ImageState fromChunk(char*& chunk, size_t N);
 	};

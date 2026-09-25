@@ -102,6 +102,7 @@ class PipelineParams(ParamGroup):
         self.debug = False
         self.antialiasing = False
         self.render_geo = True
+        self.render_distortion = False
         super().__init__(parser, "Pipeline Parameters")
 
 class OptimizationParams(ParamGroup):
@@ -161,6 +162,10 @@ class OptimizationParams(ParamGroup):
         self.rgb_lr = 0.01          # RGB 参数的学习率
         self.lambda_rgb = 1.0       # RGB loss 在总 loss 中的权重
         self.rgb_warmup = 1000      # RGB loss 从 0 增长到完整权重所需的迭代次数. 目的是先让曲线几何大致稳定，再逐渐让颜色参与训练
+        self.distortion_loss = False
+        self.lambda_distortion = 0.0
+        self.distortion_from_iter = 7000
+        self.distortion_end_iter = -1
 
 
         super().__init__(parser, "Optimization Parameters")

@@ -14,6 +14,8 @@
 
 #define NUM_CHANNELS 3 // Default 3, RGB
 #define NUM_ALL_MAP 4
+#define NEAR_PLANE 0.2f
+#define FAR_PLANE 100.0f
 #define BLOCK_X 16
 #define BLOCK_Y 16
 

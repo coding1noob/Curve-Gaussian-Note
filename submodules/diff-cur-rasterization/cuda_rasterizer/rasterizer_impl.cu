@@ -163,6 +163,7 @@ CudaRasterizer::GeometryState CudaRasterizer::GeometryState::fromChunk(char*& ch
 	obtain(chunk, geom.conic_opacity, P, 128);
 	// geom.rgb 是光栅器内部存放每个高斯颜色的缓冲区
 	obtain(chunk, geom.rgb, P*NUM_CHANNELS, 128);
+	obtain(chunk, geom.view2gaussian, P * 10, 128);
 	obtain(chunk, geom.tiles_touched, P, 128);
 	cub::DeviceScan::InclusiveSum(nullptr, geom.scan_size, geom.tiles_touched, geom.tiles_touched, P);
 	obtain(chunk, geom.scanning_space, geom.scan_size, 128);
@@ -173,8 +174,8 @@ CudaRasterizer::GeometryState CudaRasterizer::GeometryState::fromChunk(char*& ch
 CudaRasterizer::ImageState CudaRasterizer::ImageState::fromChunk(char*& chunk, size_t N)
 {
 	ImageState img;
-	obtain(chunk, img.accum_alpha, N, 128);
-	obtain(chunk, img.n_contrib, N, 128);
+	obtain(chunk, img.accum_alpha, N * 4, 128);
+	obtain(chunk, img.n_contrib, N * 2, 128);
 	obtain(chunk, img.ranges, N, 128);
 	return img;
 }
@@ -220,8 +221,10 @@ int CudaRasterizer::Rasterizer::forward(
 	float* out_color,
 	float* depth,
 	float* out_all_map,
+	float* out_distortion,
 	bool antialiasing,
 	const bool render_geo,
+	const bool render_distortion,
 	int* radii,
 	bool debug)
 {
@@ -273,10 +276,12 @@ int CudaRasterizer::Rasterizer::forward(
 		geomState.cov3D,
 		geomState.rgb,
 		geomState.conic_opacity,
+		geomState.view2gaussian,
 		tile_grid,
 		geomState.tiles_touched,
 		prefiltered,
-		antialiasing
+		antialiasing,
+		render_distortion
 	), debug)
 
 	// Compute prefix sum over full list of touched tile counts by Gaussians
@@ -334,6 +339,7 @@ int CudaRasterizer::Rasterizer::forward(
 		geomState.means2D,
 		feature_ptr,
 		all_map,
+		geomState.view2gaussian,
 		geomState.conic_opacity,
 		imgState.accum_alpha,
 		imgState.n_contrib,
@@ -342,7 +348,10 @@ int CudaRasterizer::Rasterizer::forward(
 		geomState.depths,
 		depth,
 		out_all_map,
-		render_geo), debug)
+		out_distortion,
+		focal_x, focal_y,
+		render_geo,
+		render_distortion), debug)
 
 	return num_rendered;
 }
@@ -374,6 +383,7 @@ void CudaRasterizer::Rasterizer::backward(
 	const float* dL_dpix,
 	const float* dL_invdepths,
 	const float* dL_dout_all_map,
+	const float* dL_dout_distortion,
 	float* dL_dmean2D,
 	float* dL_dconic,
 	float* dL_dopacity,
@@ -387,6 +397,7 @@ void CudaRasterizer::Rasterizer::backward(
 	float* dL_dall_map,
 	bool antialiasing,
 	const bool render_geo,
+	const bool render_distortion,
 	bool debug)
 {
 	GeometryState geomState = GeometryState::fromChunk(geom_buffer, P);
@@ -419,6 +430,7 @@ void CudaRasterizer::Rasterizer::backward(
 		geomState.conic_opacity,
 		color_ptr,
 		geomState.depths,
+		geomState.view2gaussian,
         all_maps,
 		all_map_pixels,
 		imgState.accum_alpha,
@@ -426,13 +438,22 @@ void CudaRasterizer::Rasterizer::backward(
 		dL_dpix,
 		dL_invdepths,
 		dL_dout_all_map,
+		dL_dout_distortion,
 		(float3*)dL_dmean2D,
 		(float4*)dL_dconic,
 		dL_dopacity,
 		dL_dcolor,
 		dL_dinvdepth,
 		dL_dall_map,
-		render_geo), debug);
+		(const float3*)means3D,
+		(const glm::vec3*)scales,
+		(const glm::vec4*)rotations,
+		viewmatrix,
+		scale_modifier,
+		(float3*)dL_dmean3D,
+		focal_x, focal_y,
+		render_geo,
+		render_distortion), debug);
 
 	// Take care of the rest of preprocessing. Was the precomputed covariance
 	// given to us or a scales/rot pair? If precomputed, pass that. If not,
