@@ -271,11 +271,71 @@ python render_metrics.py \
 
 [test] PSNR: 33.0215  SSIM: 0.9616  LPIPS: 0.0760 [25/09 11:49:57]
 
+# 引入distortion
+
+conda activate /data1/jhc/miniconda3storage/curveGS
+cd /data1/jhc/storage_of_code/Curve-Gaussian-Note/submodules/diff-cur-rasterization
+
+## 卸载环境里之前安装的版本
+python -m pip uninstall -y diff-cur-rasterization
+
+## 清理本目录的旧编译产物和旧扩展
+rm -rf build diff_cur_rasterization.egg-info
+rm -rf diff_cur_rasterization/_C*.so
+
+## 从当前源码重新编译并安装
+python -m pip install --no-build-isolation --no-cache-dir --no-deps .
+
+## 开始训练
+
+		--render_distortion
+		    是否让光栅器计算 distortion map。
+		    默认：False
+
+		--distortion_loss
+		    是否把 distortion map 加入训练损失。
+		    默认：False
+
+		--lambda_distortion
+		    distortion loss 的权重。
+		    默认：0.0
+
+		--distortion_from_iter
+		    从第几次迭代开始启用 distortion loss。
+		    默认：7000
+
+		--distortion_end_iter
+		    在第几次迭代结束 distortion loss。
+		    默认：-1，表示不设结束迭代。
 
 
-
-
-
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 python train.py \
+-s /data1/data/jhc/datasets/net6 \
+-m /data1/data/jhc/output/curve_output/net6v3_distortion \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 1 \
+--fill_y_threshold 0.5 \
+--fill_grid_resX 300 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 30 \
+--outlier_std_ratio 0.05 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.8 \
+--render_distortion \
+--distortion_loss \
+--lambda_distortion 0.01 \
+--distortion_from_iter 7000
 
 
 

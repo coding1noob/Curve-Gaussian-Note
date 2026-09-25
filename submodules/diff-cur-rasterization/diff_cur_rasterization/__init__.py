@@ -114,8 +114,10 @@ class _RasterizeGaussians(torch.autograd.Function):
             grad_out_distortion = means3D.new_empty((0,))
 
         args = (
-                means3D, 
-                radii, 
+                raster_settings.bg,
+                all_map_pixels,
+                means3D,
+                radii,
                 colors_precomp,
                 all_maps,
                 opacities,
