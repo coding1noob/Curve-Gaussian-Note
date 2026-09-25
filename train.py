@@ -1,5 +1,6 @@
 import torch.nn.functional as F
 import os
+import csv
 import open3d as o3d
 import torch
 import numpy as np
@@ -21,6 +22,7 @@ from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams, OptimizationParamsPidinet, OptimizationParamsReplica
 from plyfile import PlyData, PlyElement
 from utils.sh_utils import RGB2SH
+import diff_cur_rasterization as diff_cur_rasterization_module
 try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_FOUND = True
@@ -71,6 +73,86 @@ def _inverse_sigmoid_np(x):
     # 这里要把 [0, 1] 的概率值转回 logit，保证 3DGS_NOTE 读入后数值语义一致。
     x = np.clip(x, 1e-6, 1.0 - 1e-6)
     return np.log(x / (1.0 - x))
+
+
+def _append_distortion_metrics(
+    model_path,
+    iteration,
+    active,
+    distortion_map,
+    alpha_map,
+    normalized_mean,
+    weighted_loss,
+    pre_distortion_loss,
+    total_loss,
+    camera_name,
+    distortion_curve_grad_norm=0.0,
+    distortion_opacity_grad_norm=0.0,
+    distortion_width_grad_norm=0.0,
+):
+    values = distortion_map.detach().reshape(-1)
+    finite_mask = torch.isfinite(values)
+    finite_values = values[finite_mask]
+    if finite_values.numel() > 0:
+        percentiles = torch.quantile(
+            finite_values,
+            torch.tensor([0.5, 0.9], device=values.device, dtype=values.dtype),
+        )
+        map_max = finite_values.max()
+        map_mean = finite_values.mean()
+    else:
+        percentiles = values.new_zeros(2)
+        map_max = values.new_zeros(())
+        map_mean = values.new_zeros(())
+
+    def metric_tensor(value):
+        if torch.is_tensor(value):
+            return value.detach().to(device=values.device, dtype=values.dtype).reshape(())
+        return values.new_tensor(value)
+
+    stats = torch.stack((
+        metric_tensor(normalized_mean),
+        metric_tensor(weighted_loss),
+        metric_tensor(pre_distortion_loss),
+        metric_tensor(total_loss),
+        finite_mask.float().mean(),
+        (finite_mask & (values.abs() > 1e-12)).float().mean(),
+        map_mean,
+        percentiles[0],
+        percentiles[1],
+        map_max,
+        metric_tensor(alpha_map.detach().mean()),
+        metric_tensor(distortion_curve_grad_norm),
+        metric_tensor(distortion_opacity_grad_norm),
+        metric_tensor(distortion_width_grad_norm),
+    )).cpu().tolist()
+    row = {
+        "iteration": iteration,
+        "active": int(active),
+        "camera": camera_name,
+        "normalized_mean": stats[0],
+        "weighted_loss": stats[1],
+        "pre_distortion_loss": stats[2],
+        "total_loss": stats[3],
+        "finite_ratio": stats[4],
+        "nonzero_ratio": stats[5],
+        "normalized_finite_mean": stats[6],
+        "normalized_median": stats[7],
+        "normalized_p90": stats[8],
+        "normalized_max": stats[9],
+        "alpha_mean": stats[10],
+        "distortion_curve_grad_norm": stats[11],
+        "distortion_opacity_grad_norm": stats[12],
+        "distortion_width_grad_norm": stats[13],
+    }
+    path = os.path.join(model_path, "distortion_metrics.csv")
+    fieldnames = list(row)
+    write_header = not os.path.exists(path) or os.path.getsize(path) == 0
+    with open(path, "a", newline="") as metrics_file:
+        writer = csv.DictWriter(metrics_file, fieldnames=fieldnames)
+        if write_header:
+            writer.writeheader()
+        writer.writerow(row)
 
 
 @torch.no_grad()
@@ -203,6 +285,16 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
     # 1. 初始化训练对象：创建输出、曲线高斯模型、场景、优化器，并可选恢复 checkpoint。
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
+    print(
+        "[Rasterizer] Python: {} | CUDA: {}".format(
+            diff_cur_rasterization_module.__file__,
+            getattr(diff_cur_rasterization_module._C, "__file__", "unknown"),
+        )
+    )
+    if opt.distortion_loss and opt.lambda_distortion > 0 and not pipe.render_distortion:
+        raise ValueError(
+            "distortion_loss requires --render_distortion; the rasterizer output is otherwise zero"
+        )
     gaussians = GaussianCurveModel(
         dataset.sh_degree,
         dataset.n_gaussians,
@@ -303,6 +395,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
         # 新代码, 用新函数
         # loss: 包含 RGB、几何和后续正则项的总 loss. Ll1: 传给日志系统的基础图像/几何 loss
         loss, Ll1 = Loss_part(dataset, viewpoint_cam, image, rend_alpha, iteration, opt)
+        distortion_base_loss = loss
 
         distortion_active = (
             getattr(opt, "distortion_loss", False)
@@ -314,8 +407,19 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
             )
         )
         distortion_raw = render_pkg.get("distortion")
+        distortion_raw_mean = (
+            distortion_raw.mean()
+            if distortion_raw is not None
+            else loss.new_zeros(())
+        )
+        distortion_weighted_loss = loss.new_zeros(())
         if distortion_active and distortion_raw is not None:
-            loss = loss + opt.lambda_distortion * distortion_raw.mean()
+            distortion_weighted_loss = opt.lambda_distortion * distortion_raw_mean
+            loss = loss + distortion_weighted_loss
+        elif distortion_active:
+            raise RuntimeError(
+                "distortion_loss is active but the renderer returned no distortion map"
+            )
 
 
         if dataset.SGCR and opt.lambda_consis > 0:
@@ -397,6 +501,50 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
                 curve_conn = torch.linalg.vector_norm(all_points[pair_rows] - all_points[pair_cols], dim=-1).mean()
                 loss = loss + opt.lambda_points_conn * curve_conn
 
+        distortion_log_interval = max(1, getattr(opt, "distortion_log_interval", 100))
+        if iteration % distortion_log_interval == 0 and distortion_raw is not None:
+            distortion_curve_grad_norm = loss.new_zeros(())
+            distortion_opacity_grad_norm = loss.new_zeros(())
+            distortion_width_grad_norm = loss.new_zeros(())
+            if distortion_active and distortion_weighted_loss.requires_grad:
+                distortion_grads = torch.autograd.grad(
+                    distortion_weighted_loss,
+                    (gaussians._curve_points, gaussians._opacity, gaussians._width),
+                    retain_graph=True,
+                    allow_unused=True,
+                )
+                distortion_curve_grad_norm = (
+                    distortion_grads[0].norm()
+                    if distortion_grads[0] is not None
+                    else loss.new_zeros(())
+                )
+                distortion_opacity_grad_norm = (
+                    distortion_grads[1].norm()
+                    if distortion_grads[1] is not None
+                    else loss.new_zeros(())
+                )
+                distortion_width_grad_norm = (
+                    distortion_grads[2].norm()
+                    if distortion_grads[2] is not None
+                    else loss.new_zeros(())
+                )
+
+            _append_distortion_metrics(
+                scene.model_path,
+                iteration,
+                distortion_active,
+                distortion_raw,
+                rend_alpha,
+                distortion_raw_mean,
+                distortion_weighted_loss,
+                distortion_base_loss,
+                loss,
+                viewpoint_cam.image_name,
+                distortion_curve_grad_norm,
+                distortion_opacity_grad_norm,
+                distortion_width_grad_norm,
+            )
+
         # 6. 反向传播：根据边缘图监督和正则项更新曲线高斯参数。
         loss.backward()
         iter_end.record()
@@ -417,6 +565,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
                     "smo": f"{curve_smo_for_log:.{5}f}",
                     "conn": f"{curve_conn_for_log:.{5}f}",
                     "consis": f"{consistency_for_log:.{5}f}",
+                    "dist": f"{distortion_weighted_loss.item():.{5}f}",
+                    "dist_on": int(distortion_active),
                     "opa": f"{gaussians.get_opacity.mean().item():.{5}f}",
                 }
                 progress_bar.set_postfix(loss_dict)
@@ -429,6 +579,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
                 tb_writer.add_scalar('train_loss_patches/curve_smo', curve_smo_for_log, iteration)
                 tb_writer.add_scalar('train_loss_patches/curve_conn', curve_conn_for_log, iteration)
                 tb_writer.add_scalar('train_loss_patches/consistency', consistency_for_log, iteration)
+                tb_writer.add_scalar('train_loss_patches/distortion_raw', distortion_raw_mean.item(), iteration)
+                tb_writer.add_scalar('train_loss_patches/distortion_weighted', distortion_weighted_loss.item(), iteration)
+                tb_writer.add_scalar('train_loss_patches/distortion_active', float(distortion_active), iteration)
 
 
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end),
@@ -688,6 +841,23 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                                              rend_dir[None], global_step=iteration)
                         tb_writer.add_images(config['name'] + "_view_{}/rend_alpha".format(viewpoint.image_name),
                                              rend_alpha[None], global_step=iteration)
+                        distortion = render_pkg.get("distortion")
+                        if distortion is not None:
+                            distortion_vis = distortion.clamp_min(0.0)
+                            distortion_vis = distortion_vis / distortion_vis.quantile(0.99).clamp_min(1e-8)
+                            tb_writer.add_images(
+                                config['name'] + "_view_{}/distortion".format(viewpoint.image_name),
+                                distortion_vis.clamp(0.0, 1.0)[None],
+                                global_step=iteration,
+                            )
+                            distortion_over_alpha = distortion / (rend_alpha + 1e-6)
+                            distortion_over_alpha = distortion_over_alpha.clamp_min(0.0)
+                            distortion_over_alpha = distortion_over_alpha / distortion_over_alpha.quantile(0.99).clamp_min(1e-8)
+                            tb_writer.add_images(
+                                config['name'] + "_view_{}/distortion_over_alpha".format(viewpoint.image_name),
+                                distortion_over_alpha.clamp(0.0, 1.0)[None],
+                                global_step=iteration,
+                            )
 
                     l1_test += l1_loss(image, gt_image).mean().double()
                     psnr_test += psnr(image, gt_image).mean().double()

@@ -247,7 +247,7 @@ python render_PGSR.py \
 
 [test] PSNR: 19.1395  SSIM: 0.5693  LPIPS: 0.3370 [23/09 16:58:27]
 
-# 改进render_normal
+# 改进render_normal.py
 
 CUDA_DEVICE_ORDER=PCI_BUS_ID \
 CUDA_VISIBLE_DEVICES=2 \

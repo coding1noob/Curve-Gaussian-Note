@@ -281,7 +281,7 @@ python -m pip uninstall -y diff-cur-rasterization
 
 ## 清理本目录的旧编译产物和旧扩展
 rm -rf build diff_cur_rasterization.egg-info
-rm -rf diff_cur_rasterization/_C*.so
+rm -f diff_cur_rasterization/_C*.so
 
 ## 从当前源码重新编译并安装
 python -m pip install --no-build-isolation --no-cache-dir --no-deps .
@@ -308,6 +308,7 @@ python -m pip install --no-build-isolation --no-cache-dir --no-deps .
 		    在第几次迭代结束 distortion loss。
 		    默认：-1，表示不设结束迭代。
 
+1. 和myNote9.23 “2. net6 完了网都没补上，再改进：”对比，
 
 unset CUDA_VISIBLE_DEVICES
 CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 python train.py \
@@ -337,6 +338,13 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 python train.py \
 --lambda_distortion 0.01 \
 --distortion_from_iter 7000
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 python render_curve.py \
+-s /data1/data/jhc/datasets/net6 \
+-m /data1/data/jhc/output/curve_output/net6v3_distortion \
+--curve_ply /data1/data/jhc/output/curve_output/net6v3_distortion/curve_3dgs_init.ply \
+--eval \
+--skip_train
 
 
 

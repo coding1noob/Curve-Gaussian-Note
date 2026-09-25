@@ -1,6 +1,7 @@
 
-# mip-splatting 北航无人院网
+# 北航无人院网
 
+## mip-splatting(165服务器)
 60k结果：
 
 CUDA_DEVICE_ORDER=PCI_BUS_ID \
@@ -33,8 +34,29 @@ python render_metrics.py \
 
 [test] PSNR: 18.8726  SSIM: 0.5375  LPIPS: 0.4117 [24/09 22:40:38]
 
-# mip-splatting 体育场网
+## AbsGS(167服务器)
 
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python train.py \
+-s /data1/data/jhc/datasets/buaa_net \
+-m output/buaa_net_only_Abs \
+--iteration 30000 \
+--eval
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_metrics.py \
+-s /data1/data/jhc/datasets/buaa_net \
+-m output/buaa_net_only_Abs \
+--iteration 30000 \
+--skip_train
+
+# 体育场网
+
+## mip-splatting(165服务器)
 unset CUDA_VISIBLE_DEVICES
 CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=5 python train.py \
 -s /data1/jhc/datasets/net6 \
@@ -78,9 +100,54 @@ python render_metrics.py \
 
 [test] PSNR: 15.1672  SSIM: 0.4188  LPIPS: 0.4544 [25/09 11:20:16]
 
+## AbsGS(167服务器)
 
+source /opt/conda/etc/profile.d/conda.sh
+conda activate /data1/conda_env/buaajhc/absGS
+export PATH="$CONDA_PREFIX/bin:$PATH"
+hash -r
 
+cd ../AbsGS
+conda activate absGS
 
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python train.py \
+-s /data1/data/jhc/datasets/buaa_net \
+-m output/buaa_net_only_Abs \
+--iteration 30000 \
+--eval
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python train.py \
+-s /data1/data/jhc/datasets/net6 \
+-m output/net6_only_Abs \
+--iteration 30000 \
+--eval
+
+cd ../3dgs_note
+conda activate curveGS
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_metrics.py \
+-s /data1/data/jhc/datasets/buaa_net \
+-m output/buaa_net_only_Abs \
+--iteration 30000 \
+--skip_train
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/jhc/torch_cache \
+python render_metrics.py \
+-s /data1/data/jhc/datasets/net6 \
+-m output/net6_only_Abs \
+--iteration 30000 \
+--skip_train
 
 
 

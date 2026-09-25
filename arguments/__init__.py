@@ -166,6 +166,7 @@ class OptimizationParams(ParamGroup):
         self.lambda_distortion = 0.0
         self.distortion_from_iter = 7000
         self.distortion_end_iter = -1
+        self.distortion_log_interval = 100
 
 
         super().__init__(parser, "Optimization Parameters")
