@@ -692,14 +692,27 @@ class Scene:
         elif args.fill_method == "manualfill":
             triangle_file_path = os.path.join(args.source_path, args.triangle_file)
             print(f"Attempting Trianglefill using: {triangle_file_path}")
+            old_count = points.shape[0]
             points, colors, normals = Trianglefill(
                 points, colors, normals,
                 triangle_file_path=triangle_file_path,
                 grid_step=args.triangle_grid_step,
                 thickness_samples=args.triangle_thickness_samples
             )
+            # Trianglefill appends synthetic points after the filtered COLMAP points.
+            is_synthetic = np.concatenate([
+                is_synthetic,
+                np.ones(points.shape[0] - old_count, dtype=bool),
+            ])
         else:
             raise ValueError(f"Unknown fill_method: {args.fill_method}")
+
+        if not (points.shape[0] == colors.shape[0] == normals.shape[0] == is_synthetic.shape[0]):
+            raise ValueError(
+                "Point-cloud metadata lengths do not match after fill: "
+                f"points={points.shape[0]}, colors={colors.shape[0]}, "
+                f"normals={normals.shape[0]}, is_synthetic={is_synthetic.shape[0]}"
+            )
         input_filled_ply_path = os.path.join(self.model_path, "input_filled.ply")
         storePly(input_filled_ply_path, points, colors * 255.0)
         print(f"wrote input_filled.ply: {input_filled_ply_path}")
