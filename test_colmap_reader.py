@@ -649,6 +649,144 @@ def Planefill3(points, colors, normals, view_cam, view_depth, depth_samples,
     new_normals = np.vstack([normals, fill_normals])
     return new_points, new_colors, new_normals, fill_world_points, valid_fill_depths, fill_outer_counts
 
+def Trianglefill(points, colors, normals, triangle_file_path, grid_step=0.05, thickness_samples=3):
+    """
+    根据 saved_triangles.txt 中的三角形和半径，在面上生成带厚度的补点。
+    
+    :param grid_step: 三角形表面网格的步长（越小点越密）
+    :param thickness_samples: 厚度方向（直径）上的采样层数。1表示只有中心面，3表示 -r, 0, +r 三层。
+    """
+    if not os.path.exists(triangle_file_path):
+        print(f"Warning: Triangle file not found at {triangle_file_path}. Skipping Trianglefill.")
+        return points, colors, normals
+
+    triangles = []
+    with open(triangle_file_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            parts = line.split()
+            if len(parts) >= 10:
+                p0 = np.array([float(parts[0]), float(parts[1]), float(parts[2])], dtype=np.float32)
+                p1 = np.array([float(parts[3]), float(parts[4]), float(parts[5])], dtype=np.float32)
+                p2 = np.array([float(parts[6]), float(parts[7]), float(parts[8])], dtype=np.float32)
+                r0 = float(parts[9])
+                triangles.append((p0, p1, p2, r0))
+
+    if len(triangles) == 0:
+        print("No valid triangles found in the file.")
+        return points, colors, normals
+
+    print(f"Found {len(triangles)} triangles to process.")
+
+    all_new_pts = []
+    all_new_colors = []
+    all_new_normals = []
+
+    # 辅助函数：判断 2D 点是否在三角形内 (重心坐标法)
+    def points_in_triangle_2d(pts, v0, v1, v2):
+        v0 = np.array(v0, dtype=np.float32)
+        v1 = np.array(v1, dtype=np.float32)
+        v2 = np.array(v2, dtype=np.float32)
+        
+        p = pts - v0
+        v1_shifted = v1 - v0
+        v2_shifted = v2 - v0
+        
+        dot00 = np.dot(v1_shifted, v1_shifted)
+        dot01 = np.dot(v1_shifted, v2_shifted)
+        dot02 = np.dot(v1_shifted, pts.T).T
+        dot11 = np.dot(v2_shifted, v2_shifted)
+        dot12 = np.dot(v2_shifted, pts.T).T
+        
+        invDenom = 1.0 / (dot00 * dot11 - dot01 * dot01 + 1e-8)
+        u = (dot11 * dot02 - dot01 * dot12) * invDenom
+        v = (dot00 * dot12 - dot01 * dot02) * invDenom
+        
+        return (u >= -1e-6) & (v >= -1e-6) & (u + v <= 1.0 + 1e-6)
+
+    for idx, (p0, p1, p2, r0) in enumerate(triangles):
+        # 1. 建立局部正交坐标系 (u, v, n)
+        u_vec = p1 - p0
+        u_len = np.linalg.norm(u_vec)
+        if u_len < 1e-6:
+            continue
+        u_vec = u_vec / u_len
+        
+        n_vec = np.cross(p1 - p0, p2 - p0)
+        n_len = np.linalg.norm(n_vec)
+        if n_len < 1e-6:
+            continue
+        n_vec = n_vec / n_len
+        
+        v_vec = np.cross(n_vec, u_vec) # 确保右手系
+        
+        # 2. 将三角形顶点投影到局部 u-v 平面 (2D)
+        p0_2d = np.array([0.0, 0.0], dtype=np.float32)
+        p1_2d = np.array([u_len, 0.0], dtype=np.float32)
+        p2_2d = np.array([np.dot(p2 - p0, u_vec), np.dot(p2 - p0, v_vec)], dtype=np.float32)
+        
+        # 3. 计算 2D 包围盒
+        min_u = min(p0_2d[0], p1_2d[0], p2_2d[0])
+        max_u = max(p0_2d[0], p1_2d[0], p2_2d[0])
+        min_v = min(p0_2d[1], p1_2d[1], p2_2d[1])
+        max_v = max(p0_2d[1], p1_2d[1], p2_2d[1])
+        
+        # 4. 在包围盒内生成 2D 网格
+        u_vals = np.arange(min_u, max_u + grid_step, grid_step, dtype=np.float32)
+        v_vals = np.arange(min_v, max_v + grid_step, grid_step, dtype=np.float32)
+        uu, vv = np.meshgrid(u_vals, v_vals, indexing='ij')
+        grid_2d = np.stack([uu.ravel(), vv.ravel()], axis=1)
+        
+        # 5. 过滤出真正在三角形内部的 2D 点
+        mask = points_in_triangle_2d(grid_2d, p0_2d, p1_2d, p2_2d)
+        valid_2d = grid_2d[mask]
+        
+        if len(valid_2d) == 0:
+            continue
+            
+        # 6. 将 2D 点映射回 3D 基础面
+        # valid_2d: (M, 2) -> base_3d: (M, 3)
+        base_3d = p0 + valid_2d[:, 0:1] * u_vec + valid_2d[:, 1:2] * v_vec
+        
+        # 7. 沿法线方向生成厚度 (从 -r0 到 +r0，即直径厚度)
+        if thickness_samples <= 1:
+            z_offsets = np.array([0.0], dtype=np.float32)
+        else:
+            z_offsets = np.linspace(-r0, r0, thickness_samples, dtype=np.float32)
+            
+        M = len(valid_2d)
+        T = len(z_offsets)
+        
+        # 使用 NumPy Broadcasting 高效生成所有 3D 点: (M, T, 3) -> (M*T, 3)
+        pts_3d = base_3d[:, np.newaxis, :] + z_offsets[np.newaxis, :, np.newaxis] * n_vec[np.newaxis, np.newaxis, :]
+        pts_3d = pts_3d.reshape(-1, 3)
+        
+        all_new_pts.append(pts_3d)
+        # 使用青色 [0.0, 1.0, 1.0] 区分其他补点方法
+        all_new_colors.append(np.tile([0.0, 1.0, 1.0], (len(pts_3d), 1)))
+        # 法线设为该平面的法线，有助于后续 GS 初始化
+        all_new_normals.append(np.tile(n_vec, (len(pts_3d), 1)))
+
+    if len(all_new_pts) == 0:
+        print("No points generated from triangles.")
+        return points, colors, normals
+
+    # 合并所有新生成的点
+    new_pts = np.vstack(all_new_pts).astype(np.float32)
+    new_colors = np.vstack(all_new_colors).astype(np.float32)
+    new_normals = np.vstack(all_new_normals).astype(np.float32)
+    
+    print(f"Trianglefill generated {len(new_pts)} points.")
+    
+    # 与原始点云合并
+    final_points = np.vstack([points, new_pts])
+    final_colors = np.vstack([colors, new_colors])
+    final_normals = np.vstack([normals, new_normals])
+    
+    return final_points, final_colors, final_normals
+
 def main():
     parser = argparse.ArgumentParser(description="Test COLMAP-format scene loading without training.")
     parser.add_argument("-s", "--source_path", required=True, help="Path to the COLMAP-format dataset root.")
@@ -661,7 +799,7 @@ def main():
     # colmap点降采样
     parser.add_argument("--init_voxel_size", type=float, default=0.0, help="Voxel size for optional initial point cloud downsampling.")
     parser.add_argument("-m", "--model_path", default=None, help="Optional output directory for writing input.ply.")
-    parser.add_argument("--method", type=int, default=0, help="Add-points method: 0=Simplyfill2, 3=Simplyfill3.")
+    parser.add_argument("--method", type=int, default=0, help="Add-points method: 0=Simplyfill2, 3=Simplyfill3, 4=Trianglefill.")
     # 8.12：Simplyfill3 的局部 X、Y 距离阈值和 Z 高度层容差。
     parser.add_argument("--fill_x_threshold", type=float, default=0.1,
                         help="Maximum local X distance from an original point at the candidate height.")
@@ -671,6 +809,13 @@ def main():
                         help="Z tolerance used to select original points at each candidate height.")
     parser.add_argument("--trajectory_root", action="store_true",
                         help="Use the least-variance camera-trajectory axis for Simplyfill2/Simplyfill3.")
+    # 10.1：手动补点专用参数
+    parser.add_argument("--triangle_file", type=str, default="saved_triangles.txt", 
+                        help="Filename of the saved triangles (relative to source_path).")
+    parser.add_argument("--triangle_grid_step", type=float, default=0.05, 
+                        help="Grid step size for triangle surface filling (smaller = denser).")
+    parser.add_argument("--triangle_thickness_samples", type=int, default=3, 
+                        help="Number of layers in the thickness direction (diameter). 1=center only, 3=-r, 0, +r.")
     # 最后增加一下一直没增加的
     parser.add_argument("--outlier_nb_points", type=int, default=30,
                     help="Minimum neighbor count used by radius outlier removal.")
@@ -780,6 +925,32 @@ def main():
                 print(f"wrote input_filled.ply: {input_filled_ply_path}")
                 print(f"填充点云后点数: {points.shape[0]} points")
 
+            # ============ 用 Planefill3 补平面点，默认只补墙面（角度和小于 15° 的相机） ==============
+            if args.method == 2:
+                planefill3_points_count = 0
+                planefill3_depths = []
+                for cam_idx, view_cam in enumerate(scene_info.train_cameras):
+                    _, _, _, plane_points, filled_depths, outer_counts = Planefill3(
+                        base_points, base_colors, base_normals, view_cam,
+                        view_depth=5.0,            # buaa_net2 是 20.0， buaa_net 是 5.0
+                        depth_samples=200,
+                        outer_count_threshold=70,
+                        center_ratio=0.5,
+                        plane_fill_ratio=0.05,
+                        angle_sum_threshold=15.0,
+                        inner_count_threshold=5
+                    )
+                    if plane_points.shape[0] == 0:
+                        continue
+                    fill_points_list.append(plane_points)
+                    fill_colors_list.append(np.tile([1.0, 0.0, 0.0], (plane_points.shape[0], 1)))
+                    planefill3_points_count += plane_points.shape[0]
+                    planefill3_depths.extend(filled_depths)
+
+                print(f"3方法补red点")
+                print(f"Planefill3 points: {planefill3_points_count} points")
+                print(f"Planefill3 filled plane layers: {len(planefill3_depths)} / {len(scene_info.train_cameras) * 5 * 3}")
+
             # 8.12：使用 Simplyfill3 过滤 XY 平面上远离原始点的候选补点。
             elif args.method == 3:
                 trajectory_up_axis = None
@@ -809,6 +980,23 @@ def main():
                 print(f"wrote input_filled.ply: {input_filled_ply_path}")
                 print(f"Simplyfill3 填充后总点数: {points.shape[0]} points")
 
+            # 👇 新增：使用 Trianglefill 基于标记的三角形补面
+            elif args.method == 4:
+                triangle_file_path = os.path.join(source_path, args.triangle_file)
+                print(f"Attempting Trianglefill using: {triangle_file_path}")
+                
+                points, colors, normals = Trianglefill(
+                    points, colors, normals,
+                    triangle_file_path=triangle_file_path,
+                    grid_step=args.triangle_grid_step,
+                    thickness_samples=args.triangle_thickness_samples
+                )
+                
+                input_filled_ply_path = os.path.join(model_path, "input_triangle_filled.ply")
+                storePly(input_filled_ply_path, points, colors * 255.0)
+                print(f"wrote input_triangle_filled.ply: {input_filled_ply_path}")
+                print(f"手动三角填充后总点数: {points.shape[0]} points")
+
             # planefill2_points_count = 0
             # planefill2_depths = []
             # for cam_idx, view_cam in enumerate(scene_info.train_cameras):
@@ -834,31 +1022,7 @@ def main():
             # print(f"Planefill2 points: {planefill2_points_count} points")
             # print(f"Planefill2 filled farthest depth slices: {len(planefill2_depths)} / {len(scene_info.train_cameras)}")
 
-            # ============ 用 Planefill3 补平面点，默认只补墙面（角度和小于 15° 的相机） ==============
-            if args.method == 2:
-                planefill3_points_count = 0
-                planefill3_depths = []
-                for cam_idx, view_cam in enumerate(scene_info.train_cameras):
-                    _, _, _, plane_points, filled_depths, outer_counts = Planefill3(
-                        base_points, base_colors, base_normals, view_cam,
-                        view_depth=5.0,            # buaa_net2 是 20.0， buaa_net 是 5.0
-                        depth_samples=200,
-                        outer_count_threshold=70,
-                        center_ratio=0.5,
-                        plane_fill_ratio=0.05,
-                        angle_sum_threshold=15.0,
-                        inner_count_threshold=5
-                    )
-                    if plane_points.shape[0] == 0:
-                        continue
-                    fill_points_list.append(plane_points)
-                    fill_colors_list.append(np.tile([1.0, 0.0, 0.0], (plane_points.shape[0], 1)))
-                    planefill3_points_count += plane_points.shape[0]
-                    planefill3_depths.extend(filled_depths)
 
-                print(f"3方法补red点")
-                print(f"Planefill3 points: {planefill3_points_count} points")
-                print(f"Planefill3 filled plane layers: {len(planefill3_depths)} / {len(scene_info.train_cameras) * 5 * 3}")
 
             # ============ 用 Planefill4 基于 Planefill3 候选面向四边扩张补黄色点 ==============
             # planefill4_points_count = 0

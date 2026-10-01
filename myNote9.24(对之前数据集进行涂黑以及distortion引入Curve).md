@@ -346,13 +346,214 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 python render_curve.py \
 --eval \
 --skip_train
 
+2. 继续distortion对比，并且附加最终的训练(参数和    myNote9.23(用第二次采集的数据集).md    中的只加PGSR一样 )
 
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/data/jhc/datasets/net6 \
+-m /data1/data/jhc/output/curve_output/net6v4_distortion \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 1 \
+--fill_y_threshold 0.5 \
+--fill_grid_resX 300 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 30 \
+--outlier_std_ratio 0.05 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.8 \
+--render_distortion \
+--distortion_loss \
+--lambda_distortion 0.01 \
+--distortion_from_iter 7000
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/data/jhc/datasets/net6 \
+-m /data1/data/jhc/output/curve_output/net6v5_distortion \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 1 \
+--fill_y_threshold 0.5 \
+--fill_grid_resX 300 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 30 \
+--outlier_std_ratio 0.05 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.8 \
+--render_distortion \
+--distortion_loss \
+--lambda_distortion 0.05 \
+--distortion_from_iter 7000
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/data/jhc/datasets/net6 \
+-m /data1/data/jhc/output/curve_output/net6v6_distortion \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 1 \
+--fill_y_threshold 0.5 \
+--fill_grid_resX 300 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 30 \
+--outlier_std_ratio 0.05 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.8 \
+--render_distortion \
+--distortion_loss \
+--lambda_distortion 0.1 \
+--distortion_from_iter 7000
 
+cd ../3dgs_note
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python render_curve.py \
+-s /data1/data/jhc/datasets/net6 \
+-m /data1/data/jhc/output/curve_output/net6v4_distortion \
+--curve_ply /data1/data/jhc/output/curve_output/net6v4_distortion/curve_3dgs_init.ply \
+--eval \
+--skip_train
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/data/jhc/datasets/net6 \
+-m /data1/data/jhc/output/3dgs_output/net6v4_PGSR \
+--eval \
+--disable_viewer \
+--curvegs /data1/data/jhc/output/curve_output/net6v4_distortion/curve_3dgs_init.ply \
+--curvegs_inject_iteration 3000 \
+--edge_non_edge_loss \
+--use_outside_Loss \
+--outside_dilation_radius 1 \
+--outside_alpha_margin 0.0 \
+--lambda_outside_rgb 1.0 \
+--PGSR_depth \
+--multi_view_num 1 \
+--multi_view_weight_from_iter 7000 \
+--multi_view_weight_end_iter 19999 \
+--single_view_weight_from_iter 7000 \
+--single_view_weight_end_iter 19999 \
+--curve_PGSR
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python render_curve.py \
+-s /data1/data/jhc/datasets/net6 \
+-m /data1/data/jhc/output/curve_output/net6v5_distortion \
+--curve_ply /data1/data/jhc/output/curve_output/net6v5_distortion/curve_3dgs_init.ply \
+--eval \
+--skip_train
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/data/jhc/datasets/net6 \
+-m /data1/data/jhc/output/3dgs_output/net6v5_PGSR \
+--eval \
+--disable_viewer \
+--curvegs /data1/data/jhc/output/curve_output/net6v5_distortion/curve_3dgs_init.ply \
+--curvegs_inject_iteration 3000 \
+--edge_non_edge_loss \
+--use_outside_Loss \
+--outside_dilation_radius 1 \
+--outside_alpha_margin 0.0 \
+--lambda_outside_rgb 1.0 \
+--PGSR_depth \
+--multi_view_num 1 \
+--multi_view_weight_from_iter 7000 \
+--multi_view_weight_end_iter 19999 \
+--single_view_weight_from_iter 7000 \
+--single_view_weight_end_iter 19999 \
+--curve_PGSR
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python render_curve.py \
+-s /data1/data/jhc/datasets/net6 \
+-m /data1/data/jhc/output/curve_output/net6v6_distortion \
+--curve_ply /data1/data/jhc/output/curve_output/net6v6_distortion/curve_3dgs_init.ply \
+--eval \
+--skip_train
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/data/jhc/datasets/net6 \
+-m /data1/data/jhc/output/3dgs_output/net6v6_PGSR \
+--eval \
+--disable_viewer \
+--curvegs /data1/data/jhc/output/curve_output/net6v6_distortion/curve_3dgs_init.ply \
+--curvegs_inject_iteration 3000 \
+--edge_non_edge_loss \
+--use_outside_Loss \
+--outside_dilation_radius 1 \
+--outside_alpha_margin 0.0 \
+--lambda_outside_rgb 1.0 \
+--PGSR_depth \
+--multi_view_num 1 \
+--multi_view_weight_from_iter 7000 \
+--multi_view_weight_end_iter 19999 \
+--single_view_weight_from_iter 7000 \
+--single_view_weight_end_iter 19999 \
+--curve_PGSR
+
+权重为0.01
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/data/jhc/torch_cache \
+python render_metrics.py \
+-s /data1/data/jhc/datasets/net6 \
+-m /data1/data/jhc/output/3dgs_output/net6v4_PGSR \
+--iteration 30000 \
+--skip_train
+[test] PSNR: 19.1073  SSIM: 0.5683  LPIPS: 0.3375 [26/09 09:18:05]
+
+权重为0.05
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/data/jhc/torch_cache \
+python render_metrics.py \
+-s /data1/data/jhc/datasets/net6 \
+-m /data1/data/jhc/output/3dgs_output/net6v5_PGSR \
+--iteration 30000 \
+--skip_train
+[test] PSNR: 19.0134  SSIM: 0.5664  LPIPS: 0.3395 [26/09 09:20:11]
+
+权重为0.1
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/data/jhc/torch_cache \
+python render_metrics.py \
+-s /data1/data/jhc/datasets/net6 \
+-m /data1/data/jhc/output/3dgs_output/net6v6_PGSR \
+--iteration 30000 \
+--skip_train
+[test] PSNR: 19.0406  SSIM: 0.5677  LPIPS: 0.3387 [26/09 09:22:17]
 
 
 
