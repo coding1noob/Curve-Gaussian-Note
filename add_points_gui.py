@@ -291,39 +291,53 @@ def run_viewer(points, colors, locator, args):
         if event.type != event.DOWN:
             return scene_widget.IGNORED
         key = event.key
+        gui = o3d.visualization.gui
         
-        if key == o3d.visualization.gui.KeyName.ESCAPE:
+        if key == gui.KeyName.ESCAPE:
             app.quit()
             return scene_widget.CONSUMED
             
         # 移动逻辑
-        if key == o3d.visualization.gui.KeyName.W: locator.move(0, 1)
-        elif key == o3d.visualization.gui.KeyName.S: locator.move(0, -1)
-        elif key == o3d.visualization.gui.KeyName.A: locator.move(1, -1)
-        elif key == o3d.visualization.gui.KeyName.D: locator.move(1, 1)
-        elif key == o3d.visualization.gui.KeyName.Q: locator.move(2, -1)
-        elif key == o3d.visualization.gui.KeyName.E: locator.move(2, 1)
+        if key == gui.KeyName.W: locator.move(0, 1)
+        elif key == gui.KeyName.S: locator.move(0, -1)
+        elif key == gui.KeyName.A: locator.move(1, -1)
+        elif key == gui.KeyName.D: locator.move(1, 1)
+        elif key == gui.KeyName.Q: locator.move(2, -1)
+        elif key == gui.KeyName.E: locator.move(2, 1)
         # 缩放逻辑
-        elif key == o3d.visualization.gui.KeyName.I: locator.resize(1)
-        elif key == o3d.visualization.gui.KeyName.J: locator.resize(-1)
+        elif key == gui.KeyName.I: locator.resize(1)
+        elif key == gui.KeyName.J: locator.resize(-1)
         # 视角重置
-        elif key == o3d.visualization.gui.KeyName.R:
+        elif key == gui.KeyName.R:
             scene_widget.setup_camera(60.0, bounds, locator.position.reshape(3, 1))
             window.post_redraw()
             return scene_widget.CONSUMED
         # 保存锚点
-        elif key == o3d.visualization.gui.KeyName.B:
+        elif key == gui.KeyName.B:
             add_anchor()
             return scene_widget.CONSUMED
+            
+        # 👇 【新增】动态调节 WASDQE 的移动步长
+        elif key == gui.KeyName.O:
+            locator.step += 0.05  # 每次增加 0.05
+            locator.step = max(0.01, locator.step)  # 保护机制：确保最小步长不低于 0.01
+            print(f"🚀 [Step Increased] Current locator step: {locator.step:.4f}")
+            return scene_widget.CONSUMED
+            
+        elif key == gui.KeyName.K:
+            locator.step -= 0.05  # 每次减少 0.05
+            locator.step = max(0.01, locator.step)  # 保护机制：确保最小步长不低于 0.01
+            print(f"🐢 [Step Decreased] Current locator step: {locator.step:.4f}")
+            return scene_widget.CONSUMED
+            
         else:
             return scene_widget.IGNORED
             
+        # 如果发生了移动或缩放，更新红球和坐标轴显示
         scene_widget.scene.remove_geometry("locator_sphere")
         scene_widget.scene.remove_geometry("locator_axes") # 移除旧的
         
         scene_widget.scene.add_geometry("locator_sphere", make_locator_mesh(), locator_material)
-        
-        # 👇 【修改】重新添加时，同样必须传入 axes_material
         scene_widget.scene.add_geometry("locator_axes", make_axes_lines(locator.position, locator.radius), axes_material)
         
         scene_widget.force_redraw()
@@ -335,9 +349,16 @@ def run_viewer(points, colors, locator, args):
     scene_widget.set_on_key(on_key)
     window.set_on_close(lambda: True)
     
-    print("Controls: W/S=X +/-; A/D=Y -/+; Q/E=Z -/+; I/J=radius +/-; B=save anchor; R=reset view; Esc=exit")
+    # 👇 【更新】控制台提示信息，加入 O/K 的说明
+    print("=================================================================")
+    print("Controls:")
+    print("  Move:    W/S (X), A/D (Y), Q/E (Z)  [Press repeatedly]")
+    print("  Resize:  I (larger), J (smaller)")
+    print("  Step:    O (increase step), K (decrease step)  <-- NEW!")
+    print("  Action:  B (save anchor), R (reset view), Esc (exit)")
+    print(f"Initial Step: {locator.step:.4f} | Initial Radius: {locator.radius:.4f}")
+    print("=================================================================")
     app.run()
-
 
 # ==============================================================================
 # 4. 命令行与主控制流 (CLI & Main)

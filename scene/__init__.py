@@ -404,6 +404,145 @@ def Planefill3(points, colors, normals, cam_infos, view_depth, depth_samples,
     colors = np.vstack([colors, np.concatenate(fill_colors_list, axis=0)])
     normals = np.vstack([normals, np.concatenate(fill_normals_list, axis=0)])
     return points, colors, normals
+
+def Trianglefill(points, colors, normals, triangle_file_path, grid_step=0.05, thickness_samples=3):
+    """
+    根据 saved_triangles.txt 中的三角形和半径，在面上生成带厚度的补点。
+    
+    :param grid_step: 三角形表面网格的步长（越小点越密）
+    :param thickness_samples: 厚度方向（直径）上的采样层数。1表示只有中心面，3表示 -r, 0, +r 三层。
+    """
+    if not os.path.exists(triangle_file_path):
+        print(f"Warning: Triangle file not found at {triangle_file_path}. Skipping Trianglefill.")
+        return points, colors, normals
+
+    triangles = []
+    with open(triangle_file_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            parts = line.split()
+            if len(parts) >= 10:
+                p0 = np.array([float(parts[0]), float(parts[1]), float(parts[2])], dtype=np.float32)
+                p1 = np.array([float(parts[3]), float(parts[4]), float(parts[5])], dtype=np.float32)
+                p2 = np.array([float(parts[6]), float(parts[7]), float(parts[8])], dtype=np.float32)
+                r0 = float(parts[9])
+                triangles.append((p0, p1, p2, r0))
+
+    if len(triangles) == 0:
+        print("No valid triangles found in the file.")
+        return points, colors, normals
+
+    print(f"Found {len(triangles)} triangles to process.")
+
+    all_new_pts = []
+    all_new_colors = []
+    all_new_normals = []
+
+    # 辅助函数：判断 2D 点是否在三角形内 (重心坐标法)
+    def points_in_triangle_2d(pts, v0, v1, v2):
+        v0 = np.array(v0, dtype=np.float32)
+        v1 = np.array(v1, dtype=np.float32)
+        v2 = np.array(v2, dtype=np.float32)
+        
+        p = pts - v0
+        v1_shifted = v1 - v0
+        v2_shifted = v2 - v0
+        
+        dot00 = np.dot(v1_shifted, v1_shifted)
+        dot01 = np.dot(v1_shifted, v2_shifted)
+        dot02 = np.dot(v1_shifted, pts.T).T
+        dot11 = np.dot(v2_shifted, v2_shifted)
+        dot12 = np.dot(v2_shifted, pts.T).T
+        
+        invDenom = 1.0 / (dot00 * dot11 - dot01 * dot01 + 1e-8)
+        u = (dot11 * dot02 - dot01 * dot12) * invDenom
+        v = (dot00 * dot12 - dot01 * dot02) * invDenom
+        
+        return (u >= -1e-6) & (v >= -1e-6) & (u + v <= 1.0 + 1e-6)
+
+    for idx, (p0, p1, p2, r0) in enumerate(triangles):
+        # 1. 建立局部正交坐标系 (u, v, n)
+        u_vec = p1 - p0
+        u_len = np.linalg.norm(u_vec)
+        if u_len < 1e-6:
+            continue
+        u_vec = u_vec / u_len
+        
+        n_vec = np.cross(p1 - p0, p2 - p0)
+        n_len = np.linalg.norm(n_vec)
+        if n_len < 1e-6:
+            continue
+        n_vec = n_vec / n_len
+        
+        v_vec = np.cross(n_vec, u_vec) # 确保右手系
+        
+        # 2. 将三角形顶点投影到局部 u-v 平面 (2D)
+        p0_2d = np.array([0.0, 0.0], dtype=np.float32)
+        p1_2d = np.array([u_len, 0.0], dtype=np.float32)
+        p2_2d = np.array([np.dot(p2 - p0, u_vec), np.dot(p2 - p0, v_vec)], dtype=np.float32)
+        
+        # 3. 计算 2D 包围盒
+        min_u = min(p0_2d[0], p1_2d[0], p2_2d[0])
+        max_u = max(p0_2d[0], p1_2d[0], p2_2d[0])
+        min_v = min(p0_2d[1], p1_2d[1], p2_2d[1])
+        max_v = max(p0_2d[1], p1_2d[1], p2_2d[1])
+        
+        # 4. 在包围盒内生成 2D 网格
+        u_vals = np.arange(min_u, max_u + grid_step, grid_step, dtype=np.float32)
+        v_vals = np.arange(min_v, max_v + grid_step, grid_step, dtype=np.float32)
+        uu, vv = np.meshgrid(u_vals, v_vals, indexing='ij')
+        grid_2d = np.stack([uu.ravel(), vv.ravel()], axis=1)
+        
+        # 5. 过滤出真正在三角形内部的 2D 点
+        mask = points_in_triangle_2d(grid_2d, p0_2d, p1_2d, p2_2d)
+        valid_2d = grid_2d[mask]
+        
+        if len(valid_2d) == 0:
+            continue
+            
+        # 6. 将 2D 点映射回 3D 基础面
+        # valid_2d: (M, 2) -> base_3d: (M, 3)
+        base_3d = p0 + valid_2d[:, 0:1] * u_vec + valid_2d[:, 1:2] * v_vec
+        
+        # 7. 沿法线方向生成厚度 (从 -r0 到 +r0，即直径厚度)
+        if thickness_samples <= 1:
+            z_offsets = np.array([0.0], dtype=np.float32)
+        else:
+            z_offsets = np.linspace(-r0, r0, thickness_samples, dtype=np.float32)
+            
+        M = len(valid_2d)
+        T = len(z_offsets)
+        
+        # 使用 NumPy Broadcasting 高效生成所有 3D 点: (M, T, 3) -> (M*T, 3)
+        pts_3d = base_3d[:, np.newaxis, :] + z_offsets[np.newaxis, :, np.newaxis] * n_vec[np.newaxis, np.newaxis, :]
+        pts_3d = pts_3d.reshape(-1, 3)
+        
+        all_new_pts.append(pts_3d)
+        # 使用青色 [0.0, 1.0, 1.0] 区分其他补点方法
+        all_new_colors.append(np.tile([0.0, 1.0, 1.0], (len(pts_3d), 1)))
+        # 法线设为该平面的法线，有助于后续 GS 初始化
+        all_new_normals.append(np.tile(n_vec, (len(pts_3d), 1)))
+
+    if len(all_new_pts) == 0:
+        print("No points generated from triangles.")
+        return points, colors, normals
+
+    # 合并所有新生成的点
+    new_pts = np.vstack(all_new_pts).astype(np.float32)
+    new_colors = np.vstack(all_new_colors).astype(np.float32)
+    new_normals = np.vstack(all_new_normals).astype(np.float32)
+    
+    print(f"Trianglefill generated {len(new_pts)} points.")
+    
+    # 与原始点云合并
+    final_points = np.vstack([points, new_pts])
+    final_colors = np.vstack([colors, new_colors])
+    final_normals = np.vstack([normals, new_normals])
+    
+    return final_points, final_colors, final_normals
+
 # ==============================================================================================================
 
 
@@ -550,6 +689,15 @@ class Scene:
                 is_synthetic,
                 np.ones(points.shape[0] - old_count, dtype=bool),
             ])
+        elif args.fill_method == "manualfill":
+            triangle_file_path = os.path.join(args.source_path, args.triangle_file)
+            print(f"Attempting Trianglefill using: {triangle_file_path}")
+            points, colors, normals = Trianglefill(
+                points, colors, normals,
+                triangle_file_path=triangle_file_path,
+                grid_step=args.triangle_grid_step,
+                thickness_samples=args.triangle_thickness_samples
+            )
         else:
             raise ValueError(f"Unknown fill_method: {args.fill_method}")
         input_filled_ply_path = os.path.join(self.model_path, "input_filled.ply")

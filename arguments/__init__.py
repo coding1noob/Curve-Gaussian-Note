@@ -79,6 +79,10 @@ class ModelParams(ParamGroup):
         self.outlier_nb_neighbors = 30
         self.outlier_std_ratio = 2.0
         self.camera_point_distance = 0.0
+        # 10.1：手动补点
+        self.triangle_file = "saved_triangles.txt"
+        self.triangle_grid_step = 0.05
+        self.triangle_thickness_samples = 3
         # 增加使用RGB图做限制
         self.use_RGB = False
         # 非 RGB 模式下仍使用可学习颜色；两类初始点使用不同灰度。
