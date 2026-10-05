@@ -334,27 +334,6 @@ python metrics.py \
   PSNR :   19.6599312
   LPIPS:    0.3845825
 
-## 
-
-for CAM in front_left_camera front_right_camera left_camera right_camera
-do
-  CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 \
-  env -u DISPLAY \
-  MPLCONFIGDIR=/tmp/cmrnext-mpl \
-  /data1/jhc/miniconda3storage/cmrnext/bin/python \
-  evaluate_flow_calibration.py \
-    --weights \
-      weights/cmrnext-calib-LEnc-iter1.tar \
-      weights/cmrnext-calib-LEnc-iter5.tar \
-      weights/cmrnext-calib-LEnc-iter6.tar \
-    --data_folder "$DATA_ROOT" \
-    --dataset pandaset \
-    --pandaset_sequences "$SEQ" \
-    --num_worker 0 \
-    --cam "$CAM" \
-    --viz_save_dir "$OUTPUT_ROOT/$CAM"
-done
-
 for CAM in net930-1 net930-2 net930-3 net930-4 net930-5
 do
 	CUDA_DEVICE_ORDER=PCI_BUS_ID \
@@ -382,6 +361,198 @@ do
 	python metrics.py \
 	-m output/"$CAM"
 done
+
+## 7. CUC
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES="$device" \
+TORCH_HOME=/data1/jhc/torch_cache \
+python train.py \
+-s "$S" \
+-m "$M" \
+--iteration 30000 \
+--eval \
+--disable_view
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES="$device" \
+TORCH_HOME=/data1/data/jhc/torch_cache \
+python render.py \
+-s "$S" \
+-m "$M" \
+--skip_train \
+--iteration 30000
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES="$device" \
+TORCH_HOME=/data1/data/jhc/torch_cache \
+python metrics.py \
+-m "$M"
+
+上面保存为run_exp.sh
+
+./run_exp.sh \
+/data1/data/jhc/datasets/cuc1 \
+/data1/data/jhc/output/curve_output/cuc1 \
+0
+
+./run_exp.sh \
+/data1/data/jhc/datasets/cuc2 \
+/data1/data/jhc/projects/gaussian-splatting/output/cuc2 \
+0
+
+./run_exp.sh \
+/data1/data/jhc/datasets/cuc3 \
+/data1/data/jhc/output/curve_output/cuc3 \
+2
+
+## 8. 10月2号数据集
+
+./run_exp.sh \
+/data1/data/jhc/datasets/102-1 \
+/data1/data/jhc/projects/gaussian-splatting/output/102-1 \
+0
+
+./run_exp.sh \
+/data1/data/jhc/datasets/102-2 \
+/data1/data/jhc/projects/gaussian-splatting/output/102-2 \
+1
+
+## 9. 10月3号数据集
+
+./run_exp.sh \
+/data1/data/jhc/datasets/103-1 \
+/data1/data/jhc/projects/gaussian-splatting/output/103-1 \
+0
+
+./run_exp.sh \
+/data1/data/jhc/datasets/103-2 \
+/data1/data/jhc/projects/gaussian-splatting/output/103-2 \
+1
+
+## 10. mipnerf360数据集大规模测试
+
+
+./run_exp.sh \
+/data1/data/jhc/datasets/mipnerf360/bonsai \
+/data1/data/jhc/projects/gaussian-splatting/output/bonsai \
+2
+
+  SSIM :    0.9476455                                                                               
+  PSNR :   32.4628716
+  LPIPS:    0.1795119
+
+./run_exp_r1.sh \
+/data1/data/jhc/datasets/mipnerf360/bonsai \
+/data1/data/jhc/projects/gaussian-splatting/output/bonsai_r1 \
+2
+
+----------------------------
+
+./run_exp.sh \
+/data1/data/jhc/datasets/mipnerf360/stump \
+/data1/data/jhc/projects/gaussian-splatting/output/stump \
+2
+
+  SSIM :    0.7669106
+  PSNR :   26.6454926
+  LPIPS:    0.2434780
+
+----------------------------
+
+./run_exp.sh \
+/data1/data/jhc/datasets/mipnerf360/room \
+/data1/data/jhc/projects/gaussian-splatting/output/room \
+1
+
+  SSIM :    0.9276738
+  PSNR :   31.7914257
+  LPIPS:    0.1958769
+
+./run_exp.sh \
+/data1/data/jhc/datasets/mipnerf360/kitchen \
+/data1/data/jhc/projects/gaussian-splatting/output/kitchen \
+2
+
+  SSIM :    0.9325972
+  PSNR :   31.6367474
+  LPIPS:    0.1158317
+
+
+./run_exp.sh \
+/data1/data/jhc/datasets/mipnerf360/bicycle \
+/data1/data/jhc/projects/gaussian-splatting/output/bicycle \
+1
+
+./run_exp.sh \
+/data1/data/jhc/datasets/mipnerf360/counter \
+/data1/data/jhc/projects/gaussian-splatting/output/counter \
+1
+
+./run_exp.sh \
+/data1/data/jhc/datasets/mipnerf360/garden \
+/data1/data/jhc/projects/gaussian-splatting/output/garden \
+1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

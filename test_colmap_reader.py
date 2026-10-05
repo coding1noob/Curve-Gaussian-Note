@@ -882,16 +882,28 @@ def main():
         scene_diag = float(np.linalg.norm(p_high - p_low))
         radius = scene_diag * 0.01
         print(f"scene diagonal (1-99 percentile): {scene_diag:.3f}, outlier radius: {radius:.3f}")
-        pcd_clean, _ = pcd_o3d.remove_radius_outlier(nb_points=args.outlier_nb_points, radius=radius)      # nb_points=180
-        print(f"radius outlier 去除后点数: {len(pcd_clean.points)} points")
+        if args.outlier_nb_points > 0:
+            pcd_clean, _ = pcd_o3d.remove_radius_outlier(
+                nb_points=args.outlier_nb_points,
+                radius=radius,
+            )
+            print(f"radius outlier 去除后点数: {len(pcd_clean.points)} points")
+        else:
+            pcd_clean = pcd_o3d
+            print("radius outlier disabled")
 
         # remove_statistical_outlier: 每个点到最近 nb_neighbors 个邻居的平均距离，
-        # 若超过 全局均值 + std_ratio*标准差 则视为离群点删除，能滤掉主体点云外围
-        # 整体飘远但内部略微聚集的杂乱点簇
-        pcd_clean, _ = pcd_clean.remove_statistical_outlier(
-            nb_neighbors=args.outlier_nb_neighbors,
-            std_ratio=args.outlier_std_ratio,
-        )
+        # 若超过 全局均值 + std_ratio*标准差 则视为离群点删除，能滤掉主体点云外围。
+        # nb_neighbors 或 std_ratio 小于等于 0 时关闭统计滤波。
+        if args.outlier_nb_neighbors > 0 and args.outlier_std_ratio > 0:
+            pcd_clean, _ = pcd_clean.remove_statistical_outlier(
+                nb_neighbors=args.outlier_nb_neighbors,
+                std_ratio=args.outlier_std_ratio,
+            )
+            print(f"statistical outlier 去除后点数: {len(pcd_clean.points)} points")
+        else:
+            print("statistical outlier disabled")
+
         points = np.asarray(pcd_clean.points)
         colors = np.asarray(pcd_clean.colors)
         normals = np.zeros_like(points)

@@ -58,8 +58,83 @@ python add_points_gui.py \
 --locator_radius 0.3 \
 --locator_radius_step 0.03
 
+测试：
+python test_colmap_reader.py \
+-s /home/gamma/rosbags/COLMAP/930/net930-1 \
+-m output/test/net930-1_manualFill \
+--eval \
+--method 4 \
+--init_voxel_size 0.01 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 30 \
+--outlier_std_ratio 0.05 \
+--camera_point_distance 3 \
+--triangle_grid_step 0.05 \
+--triangle_thickness_samples 3
 
+正式启动：
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/data/jhc/datasets/net930-1 \
+-m /data1/data/jhc/output/curve_output/net930-1_manual \
+--eval \
+--iterations 30000 \
+--fill_method manualfill \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 30 \
+--outlier_std_ratio 0.05 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.5
+手动三角填充后总点数: 44317 points
+
+3. 
+
+python add_points_gui.py \
+-s /home/gamma/rosbags/COLMAP/103/103-2 \
+--locator_step 0.1 \
+--locator_radius 0.3 \
+--locator_radius_step 0.03
+
+测试：
+python test_colmap_reader.py \
+-s /home/gamma/rosbags/COLMAP/103/103-2 \
+-m output/test/103-2_manualFill \
+--eval \
+--method 4 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 30 \
+--outlier_std_ratio 0.05 \
+--camera_point_distance 3 \
+--triangle_grid_step 0.05 \
+--triangle_thickness_samples 3
+
+正式启动：
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/data/jhc/datasets/103-2 \
+-m /data1/data/jhc/output/curve_output/103-2_manual \
+--eval \
+--iterations 30000 \
+--fill_method manualfill \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 30 \
+--outlier_std_ratio 0.05 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.5
 
 
 
