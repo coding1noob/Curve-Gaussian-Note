@@ -649,6 +649,34 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
                 # 把距离近、方向相似的曲线/线段合并成一条，减少重复的边
                 gaussians.merge_curves(opt.distance_threshold, opt.similarity_threshold)
 
+            # Save a snapshot before the final SGCR cleanup so its thresholds can
+            # be changed later without retraining.
+            if dataset.simple and iteration == opt.iterations:
+                if hasattr(gaussians, 'prepare_scaling_rot'):
+                    gaussians.prepare_scaling_rot()
+                origin_ply_path = os.path.join(
+                    scene.model_path, "curve_3dgs_init(origin).ply"
+                )
+                save_curve_gaussians_for_3dgs_note(
+                    gaussians,
+                    origin_ply_path,
+                    sh_degree=3,
+                    rgb=gaussians.get_rgb,
+                )
+                print(f"[final cull] saved pre-prune snapshot: {origin_ply_path} "
+                      f"({gaussians.get_curve_points.shape[0]} curves)")
+
+                if gaussians.use_RGB:
+                    origin_rgb_ply_path = os.path.join(
+                        scene.model_path, "curve_3dgs_init_RGB(origin).ply"
+                    )
+                    save_curve_gaussians_for_3dgs_note(
+                        gaussians,
+                        origin_rgb_ply_path,
+                        sh_degree=3,
+                        rgb=gaussians.get_rgb,
+                    )
+
             # simple 模式最终导出的 curve_3dgs_init.ply 也必须经过一次 SGCR
             # 风格的 opacity/mask 清理，否则低 opacity 的网格曲线仍会被导出。
             if dataset.SGCR and iteration == opt.iterations:

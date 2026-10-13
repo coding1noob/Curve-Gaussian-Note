@@ -1580,18 +1580,224 @@ python render_metrics.py \
 --iteration 30000 \
 --skip_train
 
+6. 107-1
+
+**先测试**
+python test_colmap_reader.py \
+-s /home/gamma/rosbags/COLMAP/107/107-1 \
+-m output/test/107-1 \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 0.3 \
+--fill_y_threshold 0.3 \
+--fill_z_threshold 0.3 \
+--fill_grid_resX 100 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 100 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 30 \
+--outlier_std_ratio 0.05 \
+--camera_point_distance 3
+Simplyfill3 填充后总点数: 261869 points
+
+然后：
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python train.py \
+-s /data1/data/jhc/datasets/107-1 \
+-m /data1/data/jhc/output/curve_output/107-1 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 0.3 \
+--fill_y_threshold 0.3 \
+--fill_z_threshold 0.3 \
+--fill_grid_resX 100 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 30 \
+--outlier_std_ratio 0.05 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.5
+
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/107-1/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/107-1 \
+/data1/data/jhc/output/3dgs_output/107-1 \
+1
+
+PSNR:  21.5158
+SSIM:  0.6568
+LPIPS: 0.2643
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 python render_curve.py \
+-s /data1/data/jhc/datasets/107-1 \
+-m /data1/data/jhc/output/3dgs_output/107-1 \
+--curve_ply /data1/data/jhc/output/curve_output/107-1/curve_3dgs_init.ply \
+--eval \
+--skip_train
+
+**涂黑试试**
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/data/jhc/datasets/107-1 \
+-m /data1/data/jhc/output/curve_output/107-1-black \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 0.3 \
+--fill_y_threshold 0.3 \
+--fill_z_threshold 0.3 \
+--fill_grid_resX 100 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 30 \
+--outlier_std_ratio 0.05 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.5
+[SGCR] final prune: 55819 -> 35940 curves [07/10 23:01:57]
+
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/107-1-black/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/107-1 \
+/data1/data/jhc/output/3dgs_output/107-1-black \
+2
+
+[test] PSNR: 21.6098  SSIM: 0.6571  LPIPS: 0.2673
 
 
+7. 107-2
 
+**先测试**
+python test_colmap_reader.py \
+-s /home/gamma/rosbags/COLMAP/107/107-2 \
+-m output/test/107-2 \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 0.5 \
+--fill_y_threshold 0.5 \
+--fill_z_threshold 0.5 \
+--fill_grid_resX 100 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 100 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 30 \
+--outlier_std_ratio 0.05 \
+--camera_point_distance 3
+Simplyfill3 填充后总点数: 362747 points
 
+然后：
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/data/jhc/datasets/107-2 \
+-m /data1/data/jhc/output/curve_output/107-2 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 0.5 \
+--fill_y_threshold 0.5 \
+--fill_z_threshold 0.5 \
+--fill_grid_resX 100 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 30 \
+--outlier_std_ratio 0.05 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.5
 
+[SGCR] final prune: 55215 -> 33853 curves [07/10 20:33:51]
 
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/107-2/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/107-2 \
+/data1/data/jhc/output/3dgs_output/107-2 \
+2
 
+8. 107-3
 
+**先测试**
+python test_colmap_reader.py \
+-s /home/gamma/rosbags/COLMAP/107/107-3 \
+-m output/test/107-3 \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 0.3 \
+--fill_y_threshold 0.3 \
+--fill_z_threshold 0.3 \
+--fill_grid_resX 100 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 100 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 0 \
+--outlier_nb_neighbors 0 \
+--outlier_std_ratio 0 \
+--camera_point_distance 3
+Simplyfill3 填充后总点数: 333670 points
 
+然后：
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 python train.py \
+-s /data1/data/jhc/datasets/107-3 \
+-m /data1/data/jhc/output/curve_output/107-3 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 0.3 \
+--fill_y_threshold 0.3 \
+--fill_z_threshold 0.3 \
+--fill_grid_resX 100 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 0 \
+--outlier_nb_neighbors 0 \
+--outlier_std_ratio 0 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.5
 
+[SGCR] final prune: 138676 -> 94211 curves [07/10 21:01:24]
 
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/107-3/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/107-3 \
+/data1/data/jhc/output/3dgs_output/107-3 \
+1
 
+[test] PSNR: 21.6226  SSIM: 0.6171  LPIPS: 0.2835 [07/10 23:07:51]
 
 
 

@@ -442,11 +442,6 @@ python metrics.py \
   PSNR :   32.4628716
   LPIPS:    0.1795119
 
-./run_exp_r1.sh \
-/data1/data/jhc/datasets/mipnerf360/bonsai \
-/data1/data/jhc/projects/gaussian-splatting/output/bonsai_r1 \
-2
-
 ----------------------------
 
 ./run_exp.sh \
@@ -457,6 +452,14 @@ python metrics.py \
   SSIM :    0.7669106
   PSNR :   26.6454926
   LPIPS:    0.2434780
+  
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/data/jhc/torch_cache \
+python full_metrics.py \
+--renders_dir /data1/data/jhc/projects/gaussian-splatting/output/stump/test/ours_30000/renders \
+--gt_dir /data1/data/jhc/projects/gaussian-splatting/output/stump/test/ours_30000/gt \
+--show_metrics
 
 ----------------------------
 
@@ -483,6 +486,13 @@ python metrics.py \
 /data1/data/jhc/datasets/mipnerf360/bicycle \
 /data1/data/jhc/projects/gaussian-splatting/output/bicycle \
 1
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=1 \
+TORCH_HOME=/data1/data/jhc/torch_cache \
+python full_metrics.py \
+--renders_dir /data1/data/jhc/projects/gaussian-splatting/output/bicycle/test/ours_30000/renders \
+--gt_dir /data1/data/jhc/projects/gaussian-splatting/output/bicycle/test/ours_30000/gt \
+--show_metrics
 
 ./run_exp.sh \
 /data1/data/jhc/datasets/mipnerf360/counter \
@@ -493,71 +503,210 @@ python metrics.py \
 /data1/data/jhc/datasets/mipnerf360/garden \
 /data1/data/jhc/projects/gaussian-splatting/output/garden \
 1
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/data/jhc/torch_cache \
+python full_metrics.py \
+--renders_dir /data1/data/jhc/projects/gaussian-splatting/output/garden/test/ours_30000/renders \
+--gt_dir /data1/data/jhc/projects/gaussian-splatting/output/garden/test/ours_30000/gt \
+--show_metrics
+
+
+## 11. TnT
+
+./run_exp.sh \
+/data1/data/jhc/datasets/TnT/M60 \
+/data1/data/jhc/projects/gaussian-splatting/output/M60 \
+1
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=2 \
+TORCH_HOME=/data1/data/jhc/torch_cache \
+python full_metrics.py \
+--renders_dir /data1/data/jhc/projects/gaussian-splatting/output/Train/test/ours_30000/renders \
+--gt_dir /data1/data/jhc/projects/gaussian-splatting/output/Train/test/ours_30000/gt \
+--show_metrics
+
+./run_exp.sh \
+/data1/data/jhc/datasets/TnT/Train \
+/data1/data/jhc/projects/gaussian-splatting/output/Train \
+2
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=1 \
+TORCH_HOME=/data1/data/jhc/torch_cache \
+python full_metrics.py \
+--renders_dir /data1/data/jhc/projects/gaussian-splatting/output/M60/test/ours_30000/renders \
+--gt_dir /data1/data/jhc/projects/gaussian-splatting/output/M60/test/ours_30000/gt \
+--show_metrics
+
+## 12. 106
+
+./run_exp.sh \
+/data1/data/jhc/datasets/106 \
+/data1/data/jhc/projects/gaussian-splatting/output/106 \
+1
+
+## 13. 107
+
+./run_exp.sh \
+/data1/data/jhc/datasets/107-1 \
+/data1/data/jhc/projects/gaussian-splatting/output/107-1 \
+1
+
+./run_exp.sh \
+/data1/data/jhc/datasets/107-2 \
+/data1/data/jhc/projects/gaussian-splatting/output/107-2 \
+0
+
+./run_exp.sh \
+/data1/data/jhc/datasets/107-3 \
+/data1/data/jhc/projects/gaussian-splatting/output/107-3 \
+2
+
+## 14. 106-2
+
+./run_exp.sh \
+/data1/data/jhc/datasets/106-2 \
+/data1/data/jhc/projects/gaussian-splatting/output/106-2 \
+2
+
+## 15. TnT中的卡车
+
+./run_exp.sh \
+/data1/data/jhc/datasets/TnT/Truck \
+/data1/data/jhc/projects/gaussian-splatting/output/Truck \
+2
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=1 \
+TORCH_HOME=/data1/data/jhc/torch_cache \
+python full_metrics.py \
+--renders_dir /data1/data/jhc/projects/gaussian-splatting/output/Truck/test/ours_30000/renders \
+--gt_dir /data1/data/jhc/projects/gaussian-splatting/output/Truck/test/ours_30000/gt \
+--show_metrics
+
+## 16. V109
+
+./run_exp.sh \
+/data1/data/jhc/datasets/formal3_white \
+/data1/data/jhc/projects/gaussian-splatting/output/V109 \
+1
+
+  SSIM :    0.9541044
+  PSNR :   32.1090508
+  LPIPS:    0.0714128
+
+## 17. 1010数据集
+
+1010-1排球网
+./run_exp.sh \
+/data1/data/jhc/datasets/1010-1 \
+/data1/data/jhc/projects/gaussian-splatting/output/1010-1 \
+1
+  SSIM :    0.7439128                                                                               
+  PSNR :   20.3705215                                                                               
+  LPIPS:    0.2953990
+
+./run_exp.sh \
+/data1/data/jhc/datasets/1010-2 \
+/data1/data/jhc/projects/gaussian-splatting/output/1010-2 \
+2
+  SSIM :    0.5698621
+  PSNR :   17.2433777
+  LPIPS:    0.3616252
+
+./run_exp.sh \
+/data1/data/jhc/datasets/1010-3 \
+/data1/data/jhc/projects/gaussian-splatting/output/1010-3 \
+1
+  SSIM :    0.5193532
+  PSNR :   18.0786610
+  LPIPS:    0.3831007
+
+## 18. 1011数据集
+
+./run_exp.sh \
+/data1/data/jhc/datasets/1011-1 \
+/data1/data/jhc/projects/gaussian-splatting/output/1011-1 \
+1
+  SSIM :    0.4671374
+  PSNR :   15.4333019
+  LPIPS:    0.4456077
+
+
+./run_exp.sh \
+/data1/data/jhc/datasets/1011-2 \
+/data1/data/jhc/projects/gaussian-splatting/output/1011-2 \
+0
+  SSIM :    0.5095098
+  PSNR :   20.0685024
+  LPIPS:    0.4674730
+
+## 19. 1012数据集
+
+./run_exp.sh \
+/data1/data/jhc/datasets/1012-1 \
+/data1/data/jhc/projects/gaussian-splatting/output/1012-1 \
+0
+  SSIM :    0.8260823
+  PSNR :   22.4153175
+  LPIPS:    0.2452799
+
+
+./run_exp.sh \
+/data1/data/jhc/datasets/1012-2 \
+/data1/data/jhc/projects/gaussian-splatting/output/1012-2 \
+0
+  SSIM :    0.8122016
+  PSNR :   22.1968346
+  LPIPS:    0.2479148
+
+
+./run_exp.sh \
+/data1/data/jhc/datasets/1012-3 \
+/data1/data/jhc/projects/gaussian-splatting/output/1012-3 \
+0
+  SSIM :    0.7990289
+  PSNR :   22.0679607
+  LPIPS:    0.2854997
+
+## 20. tennis 
+
+./run_exp.sh \
+/data1/data/jhc/datasets/blender1 \
+/data1/data/jhc/projects/gaussian-splatting/output/blender1 \
+0
+  SSIM :    0.8042303
+  PSNR :   24.0941963
+  LPIPS:    0.2792440
+
+./run_exp.sh \
+/data1/data/jhc/datasets/blender2 \
+/data1/data/jhc/projects/gaussian-splatting/output/blender2 \
+1
+  SSIM :    0.8071084
+  PSNR :   24.4168015
+  LPIPS:    0.2692851
+
+./run_exp.sh \
+/data1/data/jhc/datasets/blender3 \
+/data1/data/jhc/projects/gaussian-splatting/output/blender3 \
+1
+  SSIM :    0.8599075
+  PSNR :   26.6004353
+  LPIPS:    0.2496433
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
 
 
 
