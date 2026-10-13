@@ -63,12 +63,27 @@ def _opacity_remove_mask(data: np.ndarray, threshold: float) -> np.ndarray:
     return _stable_sigmoid(opacity) < threshold
 
 
+def ratio_remove_mask_from_log_scales(
+    log_scales: np.ndarray, threshold: float
+) -> np.ndarray:
+    """Return rows whose longest/second-longest axis ratio is below threshold."""
+    log_scales = np.asarray(log_scales, dtype=np.float64)
+    if log_scales.ndim != 2 or log_scales.shape[1] != 3:
+        raise ValueError("log_scales must have shape [N, 3]")
+    if not np.isfinite(log_scales).all():
+        raise ValueError("log_scales contains NaN or infinity")
+    if not np.isfinite(threshold) or threshold < 1.0:
+        raise ValueError("ratio threshold must be finite and greater than or equal to 1")
+
+    ordered = np.sort(log_scales, axis=1)[:, ::-1]
+    # Scales are logarithmic, so compare the ratio in log-space.
+    return (ordered[:, 0] - ordered[:, 1]) < np.log(threshold)
+
+
 def _ratio_remove_mask(data: np.ndarray, threshold: float) -> np.ndarray:
     scale_names = ("scale_0", "scale_1", "scale_2")
     log_scales = np.column_stack([_finite_field(data, name) for name in scale_names])
-    ordered = np.sort(log_scales, axis=1)[:, ::-1]
-    # The PLY contains log-scales, so compare differences in log-space.
-    return (ordered[:, 0] - ordered[:, 1]) < np.log(threshold)
+    return ratio_remove_mask_from_log_scales(log_scales, threshold)
 
 
 def _filtered_vertex_element(vertex: PlyElement, kept_data: np.ndarray) -> PlyElement:

@@ -626,8 +626,142 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
 [test] PSNR: 26.4420  SSIM: 0.8565  LPIPS: 0.2556 [13/10 20:34:12]
 
 
+试试保留线多一些
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python train.py \
+-s /data1/data/jhc/datasets/blender3 \
+-m /data1/data/jhc/output/curve_output/blender3 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 1 \
+--fill_y_threshold 0.3 \
+--fill_z_threshold 0.3 \
+--fill_grid_resX 300 \
+--fill_grid_resY 20 \
+--fill_grid_resZ 75 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 10 \
+--outlier_std_ratio 0.05 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.5
+[SGCR] final prune: 30046 -> 11617 curves [13/10 23:10:24]
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
+-s /data1/data/jhc/datasets/blender3 \
+-m /data1/data/jhc/output/3dgs_output/blender3-2 \
+--curve_ply /data1/data/jhc/output/curve_output/blender3/curve_3dgs_init.ply \
+--eval \
+--skip_train
 
+python final_cull.py \
+--input /data1/data/jhc/output/curve_output/blender3/'curve_3dgs_init(origin).ply' \
+--output /data1/data/jhc/output/curve_output/blender3/curve_3dgs_init2.ply \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 5.0
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
+-s /data1/data/jhc/datasets/blender3 \
+-m /data1/data/jhc/output/3dgs_output/blender3-2 \
+--curve_ply /data1/data/jhc/output/curve_output/blender3/curve_3dgs_init2.ply \
+--eval \
+--skip_train
+
+python final_cull.py \
+--input /data1/data/jhc/output/curve_output/blender3/'curve_3dgs_init(origin).ply' \
+--output /data1/data/jhc/output/curve_output/blender3/curve_3dgs_init3.ply \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
+-s /data1/data/jhc/datasets/blender3 \
+-m /data1/data/jhc/output/3dgs_output/blender3-2 \
+--curve_ply /data1/data/jhc/output/curve_output/blender3/curve_3dgs_init3.ply \
+--eval \
+--skip_train
+
+----
+
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/blender3/curve_3dgs_init3.ply \
+/data1/data/jhc/datasets/blender3 \
+/data1/data/jhc/output/3dgs_output/blender3-2 \
+1
+
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=0 \
+TORCH_HOME=/data1/data/jhc/torch_cache \
+python render_metrics.py \
+-s /data1/data/jhc/datasets/blender3 \
+-m /data1/data/jhc/output/3dgs_output/blender3-2 \
+--iteration 30000 \
+--skip_train
+
+[test] PSNR: 26.4037  SSIM: 0.8556  LPIPS: 0.2550 [14/10 02:00:54]
+
+11.  
+
+**先测试**
+python test_colmap_reader.py \
+-s /home/gamma/rosbags/Blender/blender3 \
+-m output/test/blender3-3 \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 1 \
+--fill_y_threshold 0.3 \
+--fill_z_threshold 0.3 \
+--fill_grid_resX 500 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 100 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 10 \
+--outlier_std_ratio 0.05 \
+--camera_point_distance 3
+Simplyfill3 填充后总点数: 920970 points
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python train.py \
+-s /data1/data/jhc/datasets/blender3 \
+-m /data1/data/jhc/output/curve_output/blender3-3 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 1 \
+--fill_y_threshold 0.3 \
+--fill_z_threshold 0.3 \
+--fill_grid_resX 500 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 10 \
+--outlier_std_ratio 0.05 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0
+
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/blender3-3/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/blender3 \
+/data1/data/jhc/output/3dgs_output/blender3-3 \
+1
 
 
 

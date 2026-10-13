@@ -678,10 +678,21 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
                     )
 
             # simple 模式最终导出的 curve_3dgs_init.ply 也必须经过一次 SGCR
-            # 风格的 opacity/mask 清理，否则低 opacity 的网格曲线仍会被导出。
+            # 风格的 opacity/mask/ratio 清理，否则无效网格曲线仍会被导出。
             if dataset.SGCR and iteration == opt.iterations:
                 before_prune = gaussians.get_curve_points.shape[0]
-                gaussians.only_prune(opt.final_opacity_cull, opt.mask_threshold)
+                final_ratio_cull = getattr(opt, "final_ratio_cull", -1.0)
+                if final_ratio_cull == -1.0:
+                    final_ratio_cull = None
+                elif final_ratio_cull < 1.0:
+                    raise ValueError(
+                        "--final_ratio_cull must be -1 (disabled) or >= 1"
+                    )
+                gaussians.only_prune(
+                    opt.final_opacity_cull,
+                    opt.mask_threshold,
+                    ratio_threshold=final_ratio_cull,
+                )
                 print(f"[SGCR] final prune: {before_prune} -> "
                       f"{gaussians.get_curve_points.shape[0]} curves")
 

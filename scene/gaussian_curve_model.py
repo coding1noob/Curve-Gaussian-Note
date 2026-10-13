@@ -715,10 +715,23 @@ class GaussianCurveModel(GaussianModel):
         return left, right
 
 
-    def only_prune(self, min_opacity, mask_threshold):
+    def only_prune(self, min_opacity, mask_threshold, ratio_threshold=None):
         prune_mask = torch.logical_or((torch.sigmoid(self._mask) <= mask_threshold).all(dim=1).squeeze(),
                                       (self.get_curve_opacity < min_opacity).squeeze())
-       
+
+        if ratio_threshold is not None:
+            if not np.isfinite(ratio_threshold) or ratio_threshold < 1.0:
+                raise ValueError("ratio_threshold must be finite and greater than or equal to 1")
+            # CurveGaussian stores physical axis lengths in _scaling. Sort the
+            # three axes so the ratio is independent of their property order.
+            scales = self._scaling.reshape(-1, self.n_gaussians, 3)
+            if not torch.isfinite(scales).all() or (scales <= 0).any():
+                raise ValueError("CurveGaussian scales must be finite and positive")
+            ordered_scales = torch.sort(scales, dim=2, descending=True).values
+            ratio = ordered_scales[:, :, 0] / ordered_scales[:, :, 1]
+            ratio_prune = (ratio < ratio_threshold).all(dim=1)
+            prune_mask = torch.logical_or(prune_mask, ratio_prune)
+
         small_mask = self._scaling[:, 0].clone().detach().reshape(-1, self.n_gaussians).sum(-1) < 1e-2
         prune_mask = torch.logical_or(small_mask, prune_mask)
         self.prune_curves(prune_mask)
