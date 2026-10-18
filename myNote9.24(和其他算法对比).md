@@ -674,39 +674,237 @@ python full_metrics.py \
 ## 20. tennis 
 
 ./run_exp.sh \
-/data1/data/jhc/datasets/blender1 \
-/data1/data/jhc/projects/gaussian-splatting/output/blender1 \
+/data1/data/jhc/datasets/blender5 \
+/data1/data/jhc/projects/gaussian-splatting/output/blender5 \
+1
+  SSIM :    0.7544028
+  PSNR :   24.1003456
+  LPIPS:    0.3902536
+  
+./run_exp.sh \
+/data1/data/jhc/datasets/b_football \
+/data1/data/jhc/projects/gaussian-splatting/output/b_football \
+1
+  SSIM :    0.5503709
+  PSNR :   16.5925045
+  LPIPS:    0.4818890
+  
+./run_exp.sh \
+/data1/data/jhc/datasets/blender6 \
+/data1/data/jhc/projects/gaussian-splatting/output/blender6 \
+1
+  SSIM :    0.7485278
+  PSNR :   23.3126221
+  LPIPS:    0.4190461
+  
+------------------------
+  
+./run_exp.sh \
+/data1/data/jhc/datasets/tennis3-100 \
+/data1/data/jhc/projects/gaussian-splatting/output/tennis3-100 \
+1
+  SSIM :    0.6963552
+  PSNR :   22.7680721
+  LPIPS:    0.5370765
+  
+## 沙排1
+  
+./run_exp.sh \
+/data1/data/jhc/datasets/sand_volleyball1 \
+/data1/data/jhc/projects/gaussian-splatting/output/sand_volleyball1 \
+1
+
+  SSIM :    0.5461751
+  PSNR :   16.6935501
+  LPIPS:    0.5520806
+
+./run_exp.sh \
+/data1/data/jhc/datasets/sand_volleyball_dense1 \
+/data1/data/jhc/projects/gaussian-splatting/output/sand_volleyball_dense1 \
+1
+
+[ITER 7000] Evaluating test: L1 0.09138908030258285 PSNR 16.292947345309788 [16/10 13:47:59]
+[ITER 7000] Evaluating train: L1 0.08166211470961571 PSNR 18.03478889465332 [16/10 13:47:59]
+
+SSIM :    0.5193883
+PSNR :   16.4591331
+LPIPS:    0.5497334
+
+## 自检
+  
+./run_exp.sh \
+/data1/data/jhc/datasets/blender1_nocolmap \
+/data1/data/jhc/projects/gaussian-splatting/output/blender1_nocolmap \
 0
+
+SSIM :    0.6680791
+PSNR :   20.4523182
+LPIPS:    0.5056385
+  
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=0 \
+TORCH_HOME=/data1/data/jhc/torch_cache \
+python metrics.py \
+-m /data1/data/jhc/projects/gaussian-splatting/output/blender1
+  
   SSIM :    0.8042303
   PSNR :   24.0941963
-  LPIPS:    0.2792440
+  LPIPS:    0.2792440  
+  
+PATH=/data1/conda_env/buaajhc/gs/bin:$PATH
+./run_exp.sh \
+/data1/data/jhc/datasets/blender1_colmap \
+/data1/data/jhc/projects/gaussian-splatting/output/blender1_colmap \
+0
+
+  SSIM :    0.7298324
+  PSNR :   22.8013325
+  LPIPS:    0.4428501
+  
+## 沙排2
 
 ./run_exp.sh \
-/data1/data/jhc/datasets/blender2 \
-/data1/data/jhc/projects/gaussian-splatting/output/blender2 \
+/data1/data/jhc/datasets/sand_volleyball2 \
+/data1/data/jhc/projects/gaussian-splatting/output/sand_volleyball2 \
 1
-  SSIM :    0.8071084
-  PSNR :   24.4168015
-  LPIPS:    0.2692851
+  SSIM :    0.5297770
+  PSNR :   17.4868698
+  LPIPS:    0.5331079
 
 ./run_exp.sh \
-/data1/data/jhc/datasets/blender3 \
-/data1/data/jhc/projects/gaussian-splatting/output/blender3 \
+/data1/data/jhc/datasets/sand_volleyball2_max500 \
+/data1/data/jhc/projects/gaussian-splatting/output/sand_volleyball2_max500 \
+0
+  SSIM :    0.5382240
+  PSNR :   17.7614288
+  LPIPS:    0.5276334
+  
+./run_exp.sh \
+/data1/data/jhc/datasets/sand_volleyball2_max1000 \
+/data1/data/jhc/projects/gaussian-splatting/output/sand_volleyball2_max1000 \
 1
-  SSIM :    0.8599075
-  PSNR :   26.6004353
-  LPIPS:    0.2496433
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+  SSIM :    0.5411986
+  PSNR :   17.7605839
+  LPIPS:    0.5197617
 
+## 沙排2增密实验
+./run_exp.sh \
+/data1/data/jhc/datasets/sand_volleyball3-2 \
+/data1/data/jhc/projects/gaussian-splatting/output/sand_volleyball3-2 \
+0
+  SSIM :    0.5125987
+  PSNR :   17.2754173
+  LPIPS:    0.5651990
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID \
+CUDA_VISIBLE_DEVICES=0 \
+TORCH_HOME=/data1/data/jhc/torch_cache \
+python render.py \
+-s /data1/data/jhc/datasets/sand_volleyball3-2 \
+-m /data1/data/jhc/projects/gaussian-splatting/output/sand_volleyball3-2 \
+--skip_test \
+--iteration 30000
+
+## 有网来一组
+
+./run_exp.sh \
+/data1/data/jhc/datasets/sand_volleyball3-2_haveNet \
+/data1/data/jhc/projects/gaussian-splatting/output/sand_volleyball3-2_haveNet \
+0
+
+  SSIM :    0.4778434
+  PSNR :   17.0017281
+  LPIPS:    0.5484946
+
+## 限制深度来一组(50,默认1000)
+
+./run_exp.sh \
+/data1/data/jhc/datasets/sand_volleyball3-2 \
+/data1/data/jhc/projects/gaussian-splatting/output/sand_volleyball3-2d \
+1
+
+  SSIM :    0.5087286
+  PSNR :   17.1855812
+  LPIPS:    0.5718522
+
+## 足球场
+
+./run_exp.sh \
+/data1/data/jhc/datasets/football2 \
+/data1/data/jhc/projects/gaussian-splatting/output/football2 \
+1
+
+  SSIM :    0.6484254
+  PSNR :   18.8602562
+  LPIPS:    0.5000867
+
+# habitat-sim
+
+./run_exp.sh \
+/data1/data/jhc/datasets/sand_night \
+/data1/data/jhc/projects/gaussian-splatting/output/sand_night \
+0
+  SSIM :    0.9439214
+  PSNR :   32.8997421
+  LPIPS:    0.1083720
+
+./run_exp.sh \
+/data1/data/jhc/datasets/soccer \
+/data1/data/jhc/projects/gaussian-splatting/output/soccer \
+1
+  SSIM :    0.9395511
+  PSNR :   27.5282650
+  LPIPS:    0.1154325
+
+./run_exp.sh \
+/data1/data/jhc/datasets/soccer2 \
+/data1/data/jhc/projects/gaussian-splatting/output/soccer2 \
+0
+  SSIM :    0.9321316
+  PSNR :   26.7580757
+  LPIPS:    0.1185207
+
+./run_exp.sh \
+/data1/data/jhc/datasets/soccer1-2 \
+/data1/data/jhc/projects/gaussian-splatting/output/soccer1-2 \
+0
+
+  SSIM :    0.9220103
+  PSNR :   26.3765068
+  LPIPS:    0.1333423
+  
+./run_exp.sh \
+/data1/data/jhc/datasets/sand_night2 \
+/data1/data/jhc/projects/gaussian-splatting/output/sand_night2 \
+0
+SSIM :    0.7868397
+PSNR :   26.6245384
+LPIPS:    0.2425984
+
+  
+./run_exp.sh \
+/data1/data/jhc/datasets/soccer1-3 \
+/data1/data/jhc/projects/gaussian-splatting/output/soccer1-3 \
+0
+  SSIM :    0.7949569
+  PSNR :   21.5241032
+  LPIPS:    0.1957446
+
+
+
+
+
+
+
+
+ 
+  
+  
+  
+  
+  
+  
+  
 
 

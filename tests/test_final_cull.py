@@ -43,6 +43,16 @@ def make_vertex() -> np.ndarray:
     return rows
 
 
+def make_long_length_vertex() -> np.ndarray:
+    lengths = np.array([1.0] * 20 + [2.0, 0.01], dtype=np.float64)
+    rows = np.zeros(len(lengths), dtype=VERTEX_DTYPE)
+    rows["x"] = np.arange(len(lengths))
+    rows["scale_0"] = np.log(lengths)
+    rows["scale_1"] = np.log(lengths)
+    rows["scale_2"] = np.log(lengths)
+    return rows
+
+
 def write_ply(path: Path, rows: np.ndarray, text: bool = False) -> None:
     face = np.empty(1, dtype=[("vertex_indices", "i4", (3,))])
     face["vertex_indices"] = [[0, 1, 2]]
@@ -75,6 +85,7 @@ class FinalCullTests(unittest.TestCase):
                     "input": 4,
                     "removed_opacity": 1,
                     "removed_ratio": 1,
+                    "removed_max_length": 0,
                     "removed": 2,
                     "output": 2,
                 },
@@ -115,6 +126,73 @@ class FinalCullTests(unittest.TestCase):
             self.assertEqual(copied.comments, ["file metadata"])
             self.assertEqual(copied.obj_info, ["test object"])
             self.assertEqual(copied["vertex"].comments, ["vertex metadata"])
+
+    def test_max_length_cull_removes_both_three_sigma_tails(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            source = directory / "input.ply"
+            output = directory / "output.ply"
+            rows = make_long_length_vertex()
+            write_ply(source, rows)
+
+            stats = final_cull.cull_ply(source, output, max_length_cull=True)
+            result = PlyData.read(str(output))["vertex"].data
+
+            self.assertEqual(stats["removed_max_length"], 2)
+            self.assertEqual(stats["removed"], 2)
+            self.assertEqual(stats["output"], 20)
+            self.assertEqual(result["x"].tolist(), list(range(20)))
+
+    def test_max_length_cull_is_disabled_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            source = directory / "input.ply"
+            output = directory / "output.ply"
+            rows = make_long_length_vertex()
+            write_ply(source, rows)
+
+            stats = final_cull.cull_ply(source, output)
+
+            self.assertEqual(stats["removed_max_length"], 0)
+            self.assertEqual(stats["output"], len(rows))
+
+    def test_max_length_uses_all_axes_and_cli_flag(self) -> None:
+        log_scales = np.zeros((21, 3), dtype=np.float64)
+        log_scales[-1, 1] = math.log(2.0)
+        mask = final_cull.max_length_remove_mask_from_log_scales(log_scales)
+        expected = np.zeros(21, dtype=bool)
+        expected[-1] = True
+        np.testing.assert_array_equal(mask, expected)
+
+        args = final_cull.build_parser().parse_args(
+            ["--input", "input.ply", "--final_maxLength_cull"]
+        )
+        self.assertTrue(args.final_max_length_cull)
+        args = final_cull.build_parser().parse_args(["--input", "input.ply"])
+        self.assertFalse(args.final_max_length_cull)
+
+    def test_max_length_requires_finite_scale_fields_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            source = directory / "input.ply"
+            output = directory / "output.ply"
+            rows = np.empty(
+                1,
+                dtype=[("x", "f4"), ("scale_0", "f4"), ("scale_1", "f4")],
+            )
+            rows["x"] = 0
+            rows["scale_0"] = 0
+            rows["scale_1"] = 0
+            write_ply(source, rows)
+            with self.assertRaisesRegex(ValueError, "scale_2"):
+                final_cull.cull_ply(source, output, max_length_cull=True)
+
+            rows = np.empty(1, dtype=VERTEX_DTYPE)
+            rows[:] = 0
+            rows["scale_1"] = np.nan
+            write_ply(source, rows)
+            with self.assertRaisesRegex(ValueError, "scale_1"):
+                final_cull.cull_ply(source, output, max_length_cull=True)
 
     def test_default_output_name(self) -> None:
         self.assertEqual(

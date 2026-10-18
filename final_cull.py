@@ -80,10 +80,44 @@ def ratio_remove_mask_from_log_scales(
     return (ordered[:, 0] - ordered[:, 1]) < np.log(threshold)
 
 
+def max_length_remove_mask_from_log_scales(log_scales: np.ndarray) -> np.ndarray:
+    """Return rows outside the physical long-axis mean +/- 3 standard deviations.
+
+    The PLY scale properties are logarithms of physical axis lengths.  The
+    statistics therefore use the largest axis after exponentiation, which is
+    the long-axis value domain requested by the command-line filter.
+    """
+    log_scales = np.asarray(log_scales, dtype=np.float64)
+    if log_scales.ndim != 2 or log_scales.shape[1] != 3:
+        raise ValueError("log_scales must have shape [N, 3]")
+    if not np.isfinite(log_scales).all():
+        raise ValueError("log_scales contains NaN or infinity")
+    if len(log_scales) == 0:
+        return np.zeros(0, dtype=bool)
+
+    long_axis = np.exp(np.max(log_scales, axis=1))
+    if not np.isfinite(long_axis).all():
+        raise ValueError("long-axis scale contains a value outside the finite range")
+
+    mean = np.mean(long_axis)
+    standard_deviation = np.std(long_axis)
+    if not np.isfinite(mean) or not np.isfinite(standard_deviation):
+        raise ValueError("long-axis statistics exceed the finite numeric range")
+    lower = mean - 3.0 * standard_deviation
+    upper = mean + 3.0 * standard_deviation
+    return (long_axis < lower) | (long_axis > upper)
+
+
 def _ratio_remove_mask(data: np.ndarray, threshold: float) -> np.ndarray:
     scale_names = ("scale_0", "scale_1", "scale_2")
     log_scales = np.column_stack([_finite_field(data, name) for name in scale_names])
     return ratio_remove_mask_from_log_scales(log_scales, threshold)
+
+
+def _max_length_remove_mask(data: np.ndarray) -> np.ndarray:
+    scale_names = ("scale_0", "scale_1", "scale_2")
+    log_scales = np.column_stack([_finite_field(data, name) for name in scale_names])
+    return max_length_remove_mask_from_log_scales(log_scales)
 
 
 def _filtered_vertex_element(vertex: PlyElement, kept_data: np.ndarray) -> PlyElement:
@@ -108,6 +142,7 @@ def cull_ply(
     output_path: Path,
     opacity_threshold: Optional[float] = None,
     ratio_threshold: Optional[float] = None,
+    max_length_cull: bool = False,
 ) -> dict[str, int]:
     """Filter a standard Gaussian PLY and return row-count statistics."""
     _validate_thresholds(opacity_threshold, ratio_threshold)
@@ -124,6 +159,7 @@ def cull_ply(
     names = tuple(vertex.data.dtype.names or ())
     remove_opacity = np.zeros(len(vertex.data), dtype=bool)
     remove_ratio = np.zeros(len(vertex.data), dtype=bool)
+    remove_max_length = np.zeros(len(vertex.data), dtype=bool)
 
     if opacity_threshold is not None:
         _require_fields(("opacity",), names)
@@ -131,8 +167,11 @@ def cull_ply(
     if ratio_threshold is not None:
         _require_fields(("scale_0", "scale_1", "scale_2"), names)
         remove_ratio = _ratio_remove_mask(vertex.data, ratio_threshold)
+    if max_length_cull:
+        _require_fields(("scale_0", "scale_1", "scale_2"), names)
+        remove_max_length = _max_length_remove_mask(vertex.data)
 
-    remove = remove_opacity | remove_ratio
+    remove = remove_opacity | remove_ratio | remove_max_length
     kept_data = vertex.data[~remove]
     new_vertex = _filtered_vertex_element(vertex, kept_data)
 
@@ -151,6 +190,7 @@ def cull_ply(
         "input": len(vertex.data),
         "removed_opacity": int(remove_opacity.sum()),
         "removed_ratio": int(remove_ratio.sum()),
+        "removed_max_length": int(remove_max_length.sum()),
         "removed": int(remove.sum()),
         "output": len(kept_data),
     }
@@ -174,6 +214,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Remove Gaussians whose long/second-longest axis ratio is strictly below this value",
     )
+    parser.add_argument(
+        "--final_maxLength_cull",
+        dest="final_max_length_cull",
+        action="store_true",
+        help="Remove Gaussians outside the long-axis mean +/- 3 standard deviations",
+    )
     return parser
 
 
@@ -186,6 +232,7 @@ def main() -> None:
         output_path,
         opacity_threshold=args.final_opacity_cull,
         ratio_threshold=args.final_ratio_cull,
+        max_length_cull=args.final_max_length_cull,
     )
     print(f"Input:  {input_path}")
     print(f"Output: {output_path}")
@@ -193,9 +240,14 @@ def main() -> None:
         f"Gaussians: {stats['input']} -> {stats['output']} "
         f"(removed {stats['removed']})"
     )
-    print(f"Removed by opacity: {stats['removed_opacity']}")
-    print(f"Removed by ratio:   {stats['removed_ratio']}")
-    if args.final_opacity_cull is None and args.final_ratio_cull is None:
+    print(f"Removed by opacity:    {stats['removed_opacity']}")
+    print(f"Removed by ratio:      {stats['removed_ratio']}")
+    print(f"Removed by max length:  {stats['removed_max_length']}")
+    if (
+        args.final_opacity_cull is None
+        and args.final_ratio_cull is None
+        and not args.final_max_length_cull
+    ):
         print("No culling thresholds supplied; wrote a schema-preserving copy.")
 
 

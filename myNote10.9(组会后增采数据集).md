@@ -439,329 +439,521 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python train.py \
 
 [test] PSNR: 22.3165  SSIM: 0.8247  LPIPS: 0.2465 [12/10 16:24:23]
 
-8. 虚拟网球网
+**虚拟网球网**
+
+8.  2-2
 
 **先测试**
 python test_colmap_reader.py \
--s /home/gamma/rosbags/Blender/blender1 \
--m output/test/blender1 \
+-s /home/gamma/rosbags/Blender/blender5 \
+-m output/test/blender5 \
 --eval \
 --init_voxel_size 0.01 \
 --method 3 \
---fill_x_threshold 1 \
+--fill_x_threshold 0.3 \
 --fill_y_threshold 0.3 \
---fill_z_threshold 0.3 \
---fill_grid_resX 200 \
---fill_grid_resY 100 \
---fill_grid_resZ 100 \
+--fill_z_threshold 0.5 \
+--fill_grid_resX 500 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 50 \
 --trajectory_root \
 --init_voxel_size 0.01 \
---outlier_nb_points 0 \
---outlier_nb_neighbors 0 \
---outlier_std_ratio 0 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
 --camera_point_distance 5
-Simplyfill3 填充后总点数: 444611 points
+Simplyfill3 填充后总点数: 180284 points
 
+PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
 unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python train.py \
--s /data1/data/jhc/datasets/blender1 \
--m /data1/data/jhc/output/curve_output/blender1 \
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 \
+"$PYTHON" train.py \
+-s /data1/data/jhc/datasets/blender5 \
+-m /data1/data/jhc/output/curve_output/blender5 \
 --eval \
 --iterations 30000 \
 --fill_method simplefill3 \
 --trajectory_root \
---fill_x_threshold 1 \
+--fill_x_threshold 0.3 \
 --fill_y_threshold 0.3 \
---fill_z_threshold 0.3 \
---fill_grid_resX 200 \
---fill_grid_resY 100 \
---fill_grid_resZ 100 \
+--fill_z_threshold 0.5 \
+--fill_grid_resX 500 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 50 \
 --n_gaussians 3 \
 --simple \
 --lambda_points_conn 0 \
 --init_voxel_size 0.01 \
---outlier_nb_points 0 \
---outlier_nb_neighbors 0 \
---outlier_std_ratio 0 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
 --camera_point_distance 5 \
 --SGCR \
---final_opacity_cull 0.8
-[SGCR] final prune: 118046 -> 88276 curves [12/10 23:18:49]
-
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 python render_curve.py \
--s /data1/data/jhc/datasets/blender1 \
--m /data1/data/jhc/output/3dgs_output/blender1 \
---curve_ply /data1/data/jhc/output/curve_output/blender1/curve_3dgs_init.ply \
---eval \
---skip_train
-效果不错，继续
-
-./nextStep.sh \
-/data1/data/jhc/output/curve_output/blender1/curve_3dgs_init.ply \
-/data1/data/jhc/datasets/blender1 \
-/data1/data/jhc/output/curve_output/blender1 \
-1
-[test] PSNR: 18.5575  SSIM: 0.6689  LPIPS: 0.3657 [13/10 03:07:31]
-
-9. 虚拟网球网2
-**先测试**
-python test_colmap_reader.py \
--s /home/gamma/rosbags/Blender/blender2 \
--m output/test/blender2 \
---eval \
---init_voxel_size 0.01 \
---method 3 \
---fill_x_threshold 1 \
---fill_y_threshold 0.3 \
---fill_z_threshold 0.3 \
---fill_grid_resX 200 \
---fill_grid_resY 100 \
---fill_grid_resZ 100 \
---trajectory_root \
---init_voxel_size 0.01 \
---outlier_nb_points 0 \
---outlier_nb_neighbors 0 \
---outlier_std_ratio 0 \
---camera_point_distance 5
-Simplyfill3 填充后总点数: 435337 points
-
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python train.py \
--s /data1/data/jhc/datasets/blender2 \
--m /data1/data/jhc/output/curve_output/blender2 \
---eval \
---iterations 30000 \
---fill_method simplefill3 \
---trajectory_root \
---fill_x_threshold 1 \
---fill_y_threshold 0.3 \
---fill_z_threshold 0.3 \
---fill_grid_resX 200 \
---fill_grid_resY 100 \
---fill_grid_resZ 100 \
---n_gaussians 3 \
---simple \
---lambda_points_conn 0 \
---init_voxel_size 0.01 \
---outlier_nb_points 0 \
---outlier_nb_neighbors 0 \
---outlier_std_ratio 0 \
---camera_point_distance 5 \
---SGCR \
---final_opacity_cull 0.8
-
-[SGCR] final prune: 123119 -> 88694 curves [13/10 05:22:02]
-
-./nextStep.sh \
-/data1/data/jhc/output/curve_output/blender2/curve_3dgs_init.ply \
-/data1/data/jhc/datasets/blender2 \
-/data1/data/jhc/output/curve_output/blender2 \
-1
-[test] PSNR: 18.8825  SSIM: 0.6752  LPIPS: 0.3449 [13/10 08:20:54]
-
-
-10. 
-
-**先测试**
-python test_colmap_reader.py \
--s /home/gamma/rosbags/Blender/blender3 \
--m output/test/blender3 \
---eval \
---init_voxel_size 0.01 \
---method 3 \
---fill_x_threshold 1 \
---fill_y_threshold 0.3 \
---fill_z_threshold 0.3 \
---fill_grid_resX 300 \
---fill_grid_resY 20 \
---fill_grid_resZ 75 \
---trajectory_root \
---init_voxel_size 0.01 \
---outlier_nb_points 5 \
---outlier_nb_neighbors 10 \
---outlier_std_ratio 0.05 \
---camera_point_distance 3
-Simplyfill3 填充后总点数: 133590 points
-
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python train.py \
--s /data1/data/jhc/datasets/blender3 \
--m /data1/data/jhc/output/curve_output/blender3 \
---eval \
---iterations 30000 \
---fill_method simplefill3 \
---trajectory_root \
---fill_x_threshold 1 \
---fill_y_threshold 0.3 \
---fill_z_threshold 0.3 \
---fill_grid_resX 300 \
---fill_grid_resY 20 \
---fill_grid_resZ 75 \
---n_gaussians 3 \
---simple \
---lambda_points_conn 0 \
---init_voxel_size 0.01 \
---outlier_nb_points 5 \
---outlier_nb_neighbors 10 \
---outlier_std_ratio 0.05 \
---camera_point_distance 3 \
---SGCR \
---final_opacity_cull 0.8
-[SGCR] final prune: 30200 -> 6732 curves [13/10 19:50:29]
-
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
--s /data1/data/jhc/datasets/blender3 \
--m /data1/data/jhc/output/3dgs_output/blender3 \
---curve_ply /data1/data/jhc/output/curve_output/blender3/curve_3dgs_init.ply \
---eval \
---skip_train
-
-./nextStep.sh \
-/data1/data/jhc/output/curve_output/blender3/curve_3dgs_init.ply \
-/data1/data/jhc/datasets/blender3 \
-/data1/data/jhc/output/3dgs_output/blender3 \
-1
-[test] PSNR: 26.4420  SSIM: 0.8565  LPIPS: 0.2556 [13/10 20:34:12]
-
-
-试试保留线多一些
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python train.py \
--s /data1/data/jhc/datasets/blender3 \
--m /data1/data/jhc/output/curve_output/blender3 \
---eval \
---iterations 30000 \
---fill_method simplefill3 \
---trajectory_root \
---fill_x_threshold 1 \
---fill_y_threshold 0.3 \
---fill_z_threshold 0.3 \
---fill_grid_resX 300 \
---fill_grid_resY 20 \
---fill_grid_resZ 75 \
---n_gaussians 3 \
---simple \
---lambda_points_conn 0 \
---init_voxel_size 0.01 \
---outlier_nb_points 5 \
---outlier_nb_neighbors 10 \
---outlier_std_ratio 0.05 \
---camera_point_distance 3 \
---SGCR \
---final_opacity_cull 0.5
-[SGCR] final prune: 30046 -> 11617 curves [13/10 23:10:24]
-
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
--s /data1/data/jhc/datasets/blender3 \
--m /data1/data/jhc/output/3dgs_output/blender3-2 \
---curve_ply /data1/data/jhc/output/curve_output/blender3/curve_3dgs_init.ply \
---eval \
---skip_train
-
-python final_cull.py \
---input /data1/data/jhc/output/curve_output/blender3/'curve_3dgs_init(origin).ply' \
---output /data1/data/jhc/output/curve_output/blender3/curve_3dgs_init2.ply \
 --final_opacity_cull 0.5 \
+--final_ratio_cull 2.0
+
+PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/blender5/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/blender5 \
+/data1/data/jhc/output/3dgs_output/blender5 \
+2
+[test] PSNR: 24.1161  SSIM: 0.7573  LPIPS: 0.3878 [15/10 12:41:05]
+
+PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
+-s /data1/data/jhc/datasets/blender5 \
+-m /data1/data/jhc/output/3dgs_output/blender5 \
+--curve_ply /data1/data/jhc/output/curve_output/blender5/curve_3dgs_init.ply \
+--eval \
+--skip_train
+
+9. 	2-3是2-2的增密版，变成环绕且两行
+**先测试**
+python test_colmap_reader.py \
+-s /home/gamma/rosbags/Blender/blender6 \
+-m output/test/blender6 \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 0.3 \
+--fill_y_threshold 0.3 \
+--fill_z_threshold 0.5 \
+--fill_grid_resX 500 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 50 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 60 \
+--outlier_nb_neighbors 15 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 3
+Simplyfill3 填充后总点数: 588105 points
+
+PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 \
+"$PYTHON" train.py \
+-s /data1/data/jhc/datasets/blender6 \
+-m /data1/data/jhc/output/curve_output/blender6 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 0.3 \
+--fill_y_threshold 0.3 \
+--fill_z_threshold 0.5 \
+--fill_grid_resX 500 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 50 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 60 \
+--outlier_nb_neighbors 15 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0
+
+PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/blender6/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/blender6 \
+/data1/data/jhc/output/3dgs_output/blender6 \
+1
+[test] PSNR: 23.8835  SSIM: 0.7649  LPIPS: 0.4016 [15/10 21:30:15]
+
+20. 足球场1试
+**先测试**
+python test_colmap_reader.py \
+-s /home/gamma/rosbags/Blender/b_football \
+-m output/test/b_football \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 1 \
+--fill_y_threshold 0.5 \
+--fill_z_threshold 1 \
+--fill_grid_resX 300 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 100 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 5
+Simplyfill3 填充后总点数: 371170 points
+
+PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 \
+"$PYTHON" train.py \
+-s /data1/data/jhc/datasets/b_football \
+-m /data1/data/jhc/output/curve_output/b_football \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 1 \
+--fill_y_threshold 0.5 \
+--fill_z_threshold 1 \
+--fill_grid_resX 300 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 5 \
+--SGCR \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0
+
+PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/b_football/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/b_football \
+/data1/data/jhc/output/3dgs_output/b_football \
+2
+
+[test] PSNR: 12.3411  SSIM: 0.4000  LPIPS: 0.5579 [15/10 21:51:46]
+
+21. 沙排1
+**先测试**
+python test_colmap_reader.py \
+-s /home/gamma/rosbags/Blender/sand_volleyball1 \
+-m output/test/sand_volleyball1 \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 1 \
+--fill_y_threshold 0.5 \
+--fill_z_threshold 0.5 \
+--fill_grid_resX 300 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 100 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 3
+Simplyfill3 填充后总点数: 542201 points
+
+PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 \
+"$PYTHON" train.py \
+-s /data1/data/jhc/datasets/sand_volleyball1 \
+-m /data1/data/jhc/output/curve_output/sand_volleyball1 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 1 \
+--fill_y_threshold 0.5 \
+--fill_z_threshold 0.5 \
+--fill_grid_resX 300 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0
+
+PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/sand_volleyball1/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/sand_volleyball1 \
+/data1/data/jhc/output/3dgs_output/sand_volleyball1 \
+0
+
+[test] PSNR: 16.7614  SSIM: 0.5380  LPIPS: 0.5399 [16/10 06:12:12]
+
+22. 沙排2
+**先测试**
+python test_colmap_reader.py \
+-s /home/gamma/rosbags/Blender/sand_volleyball2 \
+-m output/test/sand_volleyball2 \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 5 \
+--fill_y_threshold 5 \
+--fill_z_threshold 0.1 \
+--fill_grid_resX 100 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 50 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 5
+Simplyfill3 填充后总点数: 428228 points
+
+PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 \
+"$PYTHON" train.py \
+-s /data1/data/jhc/datasets/sand_volleyball2 \
+-m /data1/data/jhc/output/curve_output/sand_volleyball2 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 5 \
+--fill_y_threshold 5 \
+--fill_z_threshold 0.1 \
+--fill_grid_resX 100 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 50 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 5 \
+--SGCR \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0
+
+PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/sand_volleyball2/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/sand_volleyball2 \
+/data1/data/jhc/output/3dgs_output/sand_volleyball2 \
+1
+[test] PSNR: 17.5061  SSIM: 0.5250  LPIPS: 0.5152 [16/10 06:16:20]
+
+
+23. 沙排3-2,在2的基础上增加相机
+**先测试**
+python test_colmap_reader.py \
+-s /home/gamma/rosbags/Blender/sand_volleyball3-2 \
+-m output/test/sand_volleyball3-2 \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 5 \
+--fill_y_threshold 5 \
+--fill_z_threshold 0.1 \
+--fill_grid_resX 100 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 50 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 3
+Simplyfill3 填充后总点数: 431738 points
+
+PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 \
+"$PYTHON" train.py \
+-s /data1/data/jhc/datasets/sand_volleyball3-2 \
+-m /data1/data/jhc/output/curve_output/sand_volleyball3-2 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 5 \
+--fill_y_threshold 5 \
+--fill_z_threshold 0.1 \
+--fill_grid_resX 100 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 50 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0
+
+PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/sand_volleyball3-2/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/sand_volleyball3-2 \
+/data1/data/jhc/output/3dgs_output/sand_volleyball3-2 \
+0
+[ITER 7000] Evaluating test: L1 0.0871631983527035 PSNR 17.254363761757904 [16/10 13:40:32]
+[ITER 7000] Evaluating train: L1 0.09321244582533837 PSNR 16.66059722900391 [16/10 13:40:32]
+
+ [test] PSNR: 17.2458  SSIM: 0.5084  LPIPS: 0.5662 [16/10 14:30:06]
+ 
+24. 
+python test_colmap_reader.py \
+-s /home/gamma/storage_of_code/habitat-sim/camera_output/soccer2/colmap \
+-m output/test/soccer2 \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 2 \
+--fill_y_threshold 0.1 \
+--fill_z_threshold 2 \
+--fill_grid_resX 300 \
+--fill_grid_resY 25 \
+--fill_grid_resZ 100 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 5
+Simplyfill3 填充后总点数: 312055 points
+
+PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 \
+"$PYTHON" train.py \
+-s /data1/data/jhc/datasets/soccer2 \
+-m /data1/data/jhc/output/curve_output/soccer2 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 2 \
+--fill_y_threshold 0.1 \
+--fill_z_threshold 2 \
+--fill_grid_resX 300 \
+--fill_grid_resY 25 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 5 \
+--SGCR \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0
+
+PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/soccer2/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/soccer2 \
+/data1/data/jhc/output/3dgs_output/soccer2 \
+1
+
+[test] PSNR: 26.0925  SSIM: 0.9246  LPIPS: 0.1249 [17/10 13:22:44]
+
+25. sandnight2
+python test_colmap_reader.py \
+-s /home/gamma/storage_of_code/habitat-sim/camera_output/sand_night2/colmap \
+-m output/test/sand_night2 \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 3 \
+--fill_y_threshold 3 \
+--fill_z_threshold 0.5 \
+--fill_grid_resX 100 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 100 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 5
+Simplyfill3 填充后总点数: 784106 points
+
+PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 \
+"$PYTHON" train.py \
+-s /data1/data/jhc/datasets/sand_night2 \
+-m /data1/data/jhc/output/curve_output/sand_night2 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 3 \
+--fill_y_threshold 3 \
+--fill_z_threshold 0.5 \
+--fill_grid_resX 100 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 5 \
+--SGCR \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0
+
+PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/sand_night2 \
+/data1/data/jhc/output/3dgs_output/sand_night2 \
+1
+
+[test] PSNR: 22.8622  SSIM: 0.6466  LPIPS: 0.3301 [18/10 02:17:08]
+
+效果不好看看情况
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
+-s /data1/data/jhc/datasets/sand_night2 \
+-m /data1/data/jhc/output/3dgs_output/sand_night2 \
+--curve_ply /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init.ply \
+--eval \
+--skip_train
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python final_cull.py \
+--input /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init.ply \
+--output /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init2.ply \
+--final_opacity_cull 0.8 \
 --final_ratio_cull 5.0
 
 unset CUDA_VISIBLE_DEVICES
 CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
--s /data1/data/jhc/datasets/blender3 \
--m /data1/data/jhc/output/3dgs_output/blender3-2 \
---curve_ply /data1/data/jhc/output/curve_output/blender3/curve_3dgs_init2.ply \
+-s /data1/data/jhc/datasets/sand_night2 \
+-m /data1/data/jhc/output/3dgs_output/sand_night2 \
+--curve_ply /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init2.ply \
 --eval \
 --skip_train
 
-python final_cull.py \
---input /data1/data/jhc/output/curve_output/blender3/'curve_3dgs_init(origin).ply' \
---output /data1/data/jhc/output/curve_output/blender3/curve_3dgs_init3.ply \
---final_opacity_cull 0.5 \
---final_ratio_cull 2.0
 
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
--s /data1/data/jhc/datasets/blender3 \
--m /data1/data/jhc/output/3dgs_output/blender3-2 \
---curve_ply /data1/data/jhc/output/curve_output/blender3/curve_3dgs_init3.ply \
---eval \
---skip_train
 
-----
 
-./nextStep.sh \
-/data1/data/jhc/output/curve_output/blender3/curve_3dgs_init3.ply \
-/data1/data/jhc/datasets/blender3 \
-/data1/data/jhc/output/3dgs_output/blender3-2 \
-1
 
-CUDA_DEVICE_ORDER=PCI_BUS_ID \
-CUDA_VISIBLE_DEVICES=0 \
-TORCH_HOME=/data1/data/jhc/torch_cache \
-python render_metrics.py \
--s /data1/data/jhc/datasets/blender3 \
--m /data1/data/jhc/output/3dgs_output/blender3-2 \
---iteration 30000 \
---skip_train
 
-[test] PSNR: 26.4037  SSIM: 0.8556  LPIPS: 0.2550 [14/10 02:00:54]
 
-11.  
 
-**先测试**
-python test_colmap_reader.py \
--s /home/gamma/rosbags/Blender/blender3 \
--m output/test/blender3-3 \
---eval \
---init_voxel_size 0.01 \
---method 3 \
---fill_x_threshold 1 \
---fill_y_threshold 0.3 \
---fill_z_threshold 0.3 \
---fill_grid_resX 500 \
---fill_grid_resY 50 \
---fill_grid_resZ 100 \
---trajectory_root \
---init_voxel_size 0.01 \
---outlier_nb_points 5 \
---outlier_nb_neighbors 10 \
---outlier_std_ratio 0.05 \
---camera_point_distance 3
-Simplyfill3 填充后总点数: 920970 points
 
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python train.py \
--s /data1/data/jhc/datasets/blender3 \
--m /data1/data/jhc/output/curve_output/blender3-3 \
---eval \
---iterations 30000 \
---fill_method simplefill3 \
---trajectory_root \
---fill_x_threshold 1 \
---fill_y_threshold 0.3 \
---fill_z_threshold 0.3 \
---fill_grid_resX 500 \
---fill_grid_resY 50 \
---fill_grid_resZ 100 \
---n_gaussians 3 \
---simple \
---lambda_points_conn 0 \
---init_voxel_size 0.01 \
---outlier_nb_points 5 \
---outlier_nb_neighbors 10 \
---outlier_std_ratio 0.05 \
---camera_point_distance 3 \
---SGCR \
---final_opacity_cull 0.5 \
---final_ratio_cull 2.0
 
-./nextStep.sh \
-/data1/data/jhc/output/curve_output/blender3-3/curve_3dgs_init.ply \
-/data1/data/jhc/datasets/blender3 \
-/data1/data/jhc/output/3dgs_output/blender3-3 \
-1
 
 
 
