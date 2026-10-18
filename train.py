@@ -1,6 +1,8 @@
 import torch.nn.functional as F
 import os
 import csv
+import tempfile
+from pathlib import Path
 import open3d as o3d
 import torch
 import numpy as np
@@ -66,6 +68,62 @@ def _find_sparse_curve_endpoint_pairs(curve_points, distance_threshold):
     rows = sparse_dist.row[valid].astype(np.int64, copy=False)
     cols = sparse_dist.col[valid].astype(np.int64, copy=False)
     return rows, cols
+
+
+def _apply_final_ply_cull(
+    path,
+    source_path,
+    distance_threshold,
+    max_length_percentile,
+):
+    """Apply optional final PLY-only filters without changing the origin snapshot."""
+    if distance_threshold == -1.0:
+        distance_threshold = None
+    if max_length_percentile == -1.0:
+        max_length_percentile = None
+    if distance_threshold is None and max_length_percentile is None:
+        return None
+
+    import final_cull
+
+    # Validate before writing the temporary PLY; invalid values must not modify output.
+    final_cull._validate_thresholds(
+        None,
+        None,
+        distance_threshold,
+        max_length_percentile,
+    )
+    path = Path(path)
+    with tempfile.NamedTemporaryFile(
+        dir=path.parent,
+        prefix=f".{path.stem}.",
+        suffix=path.suffix,
+        delete=False,
+    ) as temporary_file:
+        temporary_path = Path(temporary_file.name)
+    try:
+        stats = final_cull.cull_ply(
+            path,
+            temporary_path,
+            distance_threshold=distance_threshold,
+            source_path=Path(source_path) if source_path is not None else None,
+            max_length_percentile=max_length_percentile,
+        )
+        os.replace(temporary_path, path)
+        print(
+            f"[final cull] {path.name}: {stats['input']} -> {stats['output']} "
+            f"(distance={stats['removed_distance']}, "
+            f"max-length-percentile={stats['removed_max_length_percentile']})"
+        )
+        return stats
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def _final_cull_value(value):
+    if value is None or value == -1.0:
+        return None
+    return float(value)
 
 
 def _inverse_sigmoid_np(x):
@@ -730,9 +788,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
             gaussians.prepare_scaling_rot()
     
     # 8. 最终导出：从训练好的曲线/线段参数中提取 parametric edge 结果。
-    extract_curves(gaussians, opt, scene, simple=dataset.simple)
+    extract_curves(
+        gaussians,
+        opt,
+        scene,
+        simple=dataset.simple,
+        source_path=dataset.source_path,
+    )
 
-def extract_curves(gaussians, opt, scene, simple=False):
+def extract_curves(gaussians, opt, scene, simple=False, source_path=None):
      # meger_points:
     merged_bezier_curves = gaussians.get_curve_points[gaussians.is_bezier]
     merged_line_segments = gaussians.get_curve_points[~gaussians.is_bezier][:,[0,-1],:]
@@ -770,6 +834,16 @@ def extract_curves(gaussians, opt, scene, simple=False):
             sh_degree=3,
             rgb=gaussians.get_rgb,
         )
+        _apply_final_ply_cull(
+            curve_init_ply_path,
+            source_path,
+            _final_cull_value(
+                getattr(opt, "final_distance_cull", -1.0),
+            ),
+            _final_cull_value(
+                getattr(opt, "final_maxLength_percentile_cull", -1.0),
+            ),
+        )
 
         # Keep a legacy RGB-named copy when --use_RGB is explicitly enabled.
         if gaussians.use_RGB:
@@ -782,6 +856,16 @@ def extract_curves(gaussians, opt, scene, simple=False):
                 rgb_init_ply_path,
                 sh_degree=3,
                 rgb=gaussians.get_rgb,
+            )
+            _apply_final_ply_cull(
+                rgb_init_ply_path,
+                source_path,
+                _final_cull_value(
+                    getattr(opt, "final_distance_cull", -1.0),
+                ),
+                _final_cull_value(
+                    getattr(opt, "final_maxLength_percentile_cull", -1.0),
+                ),
             )
     else:
         from edge_extraction.extract_para_edge import get_parametric_edge
@@ -915,7 +999,6 @@ if __name__ == "__main__":
     parser = ArgumentParser(description="Training script parameters", conflict_handler='resolve')
     lp = ModelParams(parser)
     op = OptimizationParams(parser)
-    
     pp = PipelineParams(parser)
     parser.add_argument('--ip', type=str, default="127.0.0.1")
     parser.add_argument('--port', type=int, default=6011)

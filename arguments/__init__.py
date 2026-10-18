@@ -133,6 +133,10 @@ class OptimizationParams(ParamGroup):
         self.final_opacity_cull = 0.005
         # 最终长轴/次长轴比剪枝阈值；小于 1 表示训练阶段不启用。
         self.final_ratio_cull = -1.0
+        # 最终导出 PLY 的相机距离剪枝阈值；负数表示不启用。
+        self.final_distance_cull = -1.0
+        # 最终导出 PLY 中按长轴删除最短百分比；负数表示不启用。
+        self.final_maxLength_percentile_cull = -1.0
         self.opacity_loss_weight = 0.01
         # SGCR 模式下的 opacity 稀疏正则权重；默认值仅在 --SGCR 时使用。
         self.lambda_sparsity = 0.01

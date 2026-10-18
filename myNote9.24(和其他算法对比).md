@@ -891,11 +891,25 @@ LPIPS:    0.2425984
   PSNR :   21.5241032
   LPIPS:    0.1957446
 
+18号晚，把地面也去掉了
 
+./run_exp.sh \
+/data1/data/jhc/datasets/sand_night3 \
+/data1/data/jhc/projects/gaussian-splatting/output/sand_night3 \
+0
 
+  SSIM :    0.8514870
+  PSNR :   28.7798805
+  LPIPS:    0.2326076
 
+./run_exp.sh \
+/data1/data/jhc/datasets/soccer3 \
+/data1/data/jhc/projects/gaussian-splatting/output/soccer3 \
+2
 
-
+  SSIM :    0.9217194
+  PSNR :   24.6600513
+  LPIPS:    0.1032879
 
 
  

@@ -1016,13 +1016,25 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
 **太短，10%最短的删除**
 conda run -n curveGS python final_cull.py \
 --input /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init.ply \
---output /data1/data/jhc/output/curve_output/sand_night2/curve_init6.ply \
+--output /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init6.ply \
 -s /data1/data/jhc/datasets/sand_night2 \
 --final_opacity_cull 0.5 \
 --final_ratio_cull 2.0 \
 --final_distance_cull 3.0 \
 --final_maxLength_percentile_cull 10
-
+Gaussians: 663690 -> 185431 (removed 478259)
+Removed by opacity:    0
+Removed by ratio:      196
+Removed by max length:  0
+Removed by distance:    457633
+Removed by max-length percentile: 20604
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
+-s /data1/data/jhc/datasets/sand_night2 \
+-m /data1/data/jhc/output/3dgs_output/sand_night2 \
+--curve_ply /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init6.ply \
+--eval \
+--skip_train
 
 26. soccer1-3
 **先测试**
@@ -1141,8 +1153,54 @@ PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
 
 [test] PSNR: 23.5863  SSIM: 0.8971  LPIPS: 0.1454 [18/10 17:48:04]
 
+28. sand_night3
+**先测试**
+python test_colmap_reader.py \
+-s /home/gamma/storage_of_code/habitat-sim/camera_output/sand_night3/colmap \
+-m output/test/sand_night3 \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 3 \
+--fill_y_threshold 3 \
+--fill_z_threshold 0.5 \
+--fill_grid_resX 50 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 10 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 3
+Simplyfill3 填充后总点数: 16637 points
 
-
-
+PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 \
+"$PYTHON" train.py \
+-s /data1/data/jhc/datasets/sand_night3 \
+-m /data1/data/jhc/output/curve_output/sand_night3 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 3 \
+--fill_y_threshold 3 \
+--fill_z_threshold 0.5 \
+--fill_grid_resX 50 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 10 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0
 
 
