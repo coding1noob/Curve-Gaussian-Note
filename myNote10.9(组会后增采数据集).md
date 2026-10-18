@@ -969,9 +969,18 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
 conda run -n curveGS python final_cull.py \
 --input /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init.ply \
 --output /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init4.ply \
+-s /data1/data/jhc/datasets/sand_night2 \
 --final_opacity_cull 0.8 \
 --final_ratio_cull 5.0 \
 --final_distance_cull 5.0
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
+-s /data1/data/jhc/datasets/sand_night2 \
+-m /data1/data/jhc/output/3dgs_output/sand_night2 \
+--curve_ply /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init4.ply \
+--eval \
+--skip_train
 
 26. soccer1-3
 **先测试**
@@ -1029,6 +1038,7 @@ PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
 /data1/data/jhc/datasets/soccer1-3 \
 /data1/data/jhc/output/3dgs_output/soccer1-3 \
 1
+[test] PSNR: 18.2967  SSIM: 0.7144  LPIPS: 0.2500 [18/10 16:59:54]
 
 27. soccer1-2
 **先测试**

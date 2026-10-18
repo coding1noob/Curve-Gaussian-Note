@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import math
 import json
+import math
 import tempfile
 import sys
 import unittest
@@ -158,7 +158,7 @@ class FinalCullTests(unittest.TestCase):
             self.assertEqual(stats["removed_max_length"], 0)
             self.assertEqual(stats["output"], len(rows))
 
-    def test_max_length_uses_all_axes_and_cli_flag(self) -> None:
+    def test_max_length_uses_all_axes_and_cli_flags(self) -> None:
         log_scales = np.zeros((21, 3), dtype=np.float64)
         log_scales[-1, 1] = math.log(2.0)
         mask = final_cull.max_length_remove_mask_from_log_scales(log_scales)
@@ -172,6 +172,12 @@ class FinalCullTests(unittest.TestCase):
         self.assertTrue(args.final_max_length_cull)
         args = final_cull.build_parser().parse_args(["--input", "input.ply"])
         self.assertFalse(args.final_max_length_cull)
+
+        args = final_cull.build_parser().parse_args(
+            ["--input", "input.ply", "-s", "/tmp/dataset", "--final_distance_cull", "5"]
+        )
+        self.assertEqual(args.source_path, Path("/tmp/dataset"))
+        self.assertEqual(args.final_distance_cull, 5.0)
 
     def test_max_length_requires_finite_scale_fields_when_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -223,7 +229,39 @@ class FinalCullTests(unittest.TestCase):
             self.assertEqual(stats["removed"], 1)
             self.assertEqual(result["x"].tolist(), [0.0, 3.0, 10.0])
 
-    def test_distance_cull_is_disabled_without_threshold(self) -> None:
+    def test_distance_cull_with_colmap_source(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            source = directory / "input.ply"
+            output = directory / "output.ply"
+            rows = make_vertex()
+            rows["x"] = [0.0, 3.0, 4.0, 10.0]
+            rows["y"] = 0.0
+            rows["z"] = 0.0
+            write_ply(source, rows)
+
+            sparse = directory / "sparse" / "0"
+            sparse.mkdir(parents=True)
+            (sparse / "images.txt").write_text(
+                "# header\n"
+                "1 1 0 0 0 0 0 0 1 image.png\n"
+                "\n"
+                "2 1 0 0 0 -10 0 0 1 image2.png\n"
+                "\n",
+                encoding="utf-8",
+            )
+
+            stats = final_cull.cull_ply(
+                source,
+                output,
+                distance_threshold=3.0,
+                source_path=directory,
+            )
+            result = PlyData.read(str(output))["vertex"].data
+
+            self.assertEqual(stats["removed_distance"], 1)
+            self.assertEqual(result["x"].tolist(), [0.0, 3.0, 10.0])
+
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
             source = directory / "input.ply"

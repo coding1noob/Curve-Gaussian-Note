@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import struct
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 from plyfile import PlyData, PlyElement
 from scipy.spatial import cKDTree
+from utils.read_write_model import read_images_binary, read_images_text, qvec2rotmat
 
 
 ORIGIN_NAME = "curve_3dgs_init(origin).ply"
@@ -129,6 +131,39 @@ def _max_length_remove_mask(data: np.ndarray) -> np.ndarray:
     return max_length_remove_mask_from_log_scales(log_scales)
 
 
+def _load_colmap_camera_centers(source_path: Path) -> np.ndarray:
+    sparse_path = source_path / "sparse" / "0"
+    binary_path = sparse_path / "images.bin"
+    text_path = sparse_path / "images.txt"
+    try:
+        if binary_path.is_file():
+            images = read_images_binary(str(binary_path))
+        elif text_path.is_file():
+            images = read_images_text(str(text_path))
+        else:
+            raise ValueError(
+                f"COLMAP images file not found under {sparse_path}: "
+                "expected images.bin or images.txt"
+            )
+    except (OSError, ValueError, struct.error) as exc:
+        raise ValueError(f"Could not read COLMAP camera poses from {sparse_path}") from exc
+
+    centers = []
+    for image_id, image in images.items():
+        rotation_world_to_camera = qvec2rotmat(np.asarray(image.qvec, dtype=np.float64))
+        translation_world_to_camera = np.asarray(image.tvec, dtype=np.float64)
+        if rotation_world_to_camera.shape != (3, 3) or translation_world_to_camera.shape != (3,):
+            raise ValueError(f"Invalid COLMAP pose for image {image_id}")
+        center = -rotation_world_to_camera.T @ translation_world_to_camera
+        if not np.isfinite(center).all():
+            raise ValueError(f"COLMAP camera {image_id} has NaN or infinity")
+        centers.append(center)
+
+    if not centers:
+        raise ValueError(f"COLMAP camera pose file contains no images: {sparse_path}")
+    return np.asarray(centers, dtype=np.float64)
+
+
 def _load_camera_centers(camera_path: Path) -> np.ndarray:
     try:
         with camera_path.open("r", encoding="utf-8") as camera_file:
@@ -166,15 +201,13 @@ def _load_camera_centers(camera_path: Path) -> np.ndarray:
 
 
 def _distance_remove_mask(
-    data: np.ndarray, camera_path: Path, threshold: float
+    data: np.ndarray, camera_centers: np.ndarray, threshold: float
 ) -> np.ndarray:
     if len(data) == 0:
-        _load_camera_centers(camera_path)
         return np.zeros(0, dtype=bool)
     coordinates = np.column_stack(
         [_finite_field(data, name) for name in ("x", "y", "z")]
     )
-    camera_centers = _load_camera_centers(camera_path)
     nearest_distances, _ = cKDTree(camera_centers).query(
         coordinates,
         k=1,
@@ -207,6 +240,7 @@ def cull_ply(
     ratio_threshold: Optional[float] = None,
     max_length_cull: bool = False,
     distance_threshold: Optional[float] = None,
+    source_path: Optional[Path] = None,
 ) -> dict[str, int]:
     """Filter a standard Gaussian PLY and return row-count statistics."""
     _validate_thresholds(opacity_threshold, ratio_threshold, distance_threshold)
@@ -237,9 +271,13 @@ def cull_ply(
         remove_max_length = _max_length_remove_mask(vertex.data)
     if distance_threshold is not None:
         _require_fields(("x", "y", "z"), names)
+        if source_path is None:
+            camera_centers = _load_camera_centers(input_path.parent / "cameras.json")
+        else:
+            camera_centers = _load_colmap_camera_centers(source_path)
         remove_distance = _distance_remove_mask(
             vertex.data,
-            input_path.parent / "cameras.json",
+            camera_centers,
             distance_threshold,
         )
 
@@ -274,6 +312,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Cull exported Curve-Gaussian 3DGS Gaussians without retraining."
     )
     parser.add_argument("--input", required=True, type=Path, help="Input Gaussian PLY")
+    parser.add_argument("-s", "--source_path", type=Path, help="Dataset root containing sparse/0/images.bin or images.txt")
     parser.add_argument("--output", type=Path, help="Output PLY; defaults beside the input")
     parser.add_argument(
         "--final_opacity_cull",
@@ -306,6 +345,7 @@ def main() -> None:
     args = build_parser().parse_args()
     input_path = args.input.expanduser()
     output_path = (args.output or default_output_path(input_path)).expanduser()
+    source_path = args.source_path.expanduser() if args.source_path is not None else None
     stats = cull_ply(
         input_path,
         output_path,
@@ -313,8 +353,11 @@ def main() -> None:
         ratio_threshold=args.final_ratio_cull,
         max_length_cull=args.final_max_length_cull,
         distance_threshold=args.final_distance_cull,
+        source_path=source_path,
     )
     print(f"Input:  {input_path}")
+    if source_path is not None:
+        print(f"Camera source: {source_path / 'sparse' / '0'}")
     print(f"Output: {output_path}")
     print(
         f"Gaussians: {stats['input']} -> {stats['output']} "
