@@ -88,6 +88,7 @@ class FinalCullTests(unittest.TestCase):
                     "removed_ratio": 1,
                     "removed_max_length": 0,
                     "removed_distance": 0,
+                    "removed_max_length_percentile": 0,
                     "removed": 2,
                     "output": 2,
                 },
@@ -179,7 +180,43 @@ class FinalCullTests(unittest.TestCase):
         self.assertEqual(args.source_path, Path("/tmp/dataset"))
         self.assertEqual(args.final_distance_cull, 5.0)
 
-    def test_max_length_requires_finite_scale_fields_when_enabled(self) -> None:
+    def test_max_length_percentile_runs_after_other_filters(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            source = directory / "input.ply"
+            output = directory / "output.ply"
+            rows = make_vertex()
+            rows["opacity"] = [math.log(0.1 / 0.9), math.log(0.9 / 0.1), math.log(0.9 / 0.1), math.log(0.9 / 0.1)]
+            rows["scale_0"] = np.log([1.0, 2.0, 3.0, 4.0])
+            rows["scale_1"] = np.log([1.0, 1.0, 1.0, 1.0])
+            rows["scale_2"] = np.log([1.0, 1.0, 1.0, 1.0])
+            write_ply(source, rows)
+
+            stats = final_cull.cull_ply(
+                source,
+                output,
+                opacity_threshold=0.5,
+                max_length_percentile=50.0,
+            )
+            result = PlyData.read(str(output))["vertex"].data
+
+            self.assertEqual(stats["removed_opacity"], 1)
+            self.assertEqual(stats["removed_max_length_percentile"], 2)
+            self.assertEqual(stats["removed"], 3)
+            self.assertEqual(result["x"].tolist(), [3.0])
+
+    def test_max_length_percentile_cli_and_validation(self) -> None:
+        args = final_cull.build_parser().parse_args(
+            ["--input", "input.ply", "--final_maxLength_percentile_cull", "5"]
+        )
+        self.assertEqual(args.final_max_length_percentile_cull, 5.0)
+        with self.assertRaisesRegex(ValueError, r"in \[0, 100\]"):
+            final_cull.cull_ply(
+                Path("/tmp/input.ply"),
+                Path("/tmp/output.ply"),
+                max_length_percentile=100.1,
+            )
+
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
             source = directory / "input.ply"

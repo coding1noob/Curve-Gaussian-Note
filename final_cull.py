@@ -30,6 +30,7 @@ def _validate_thresholds(
     opacity_threshold: Optional[float],
     ratio_threshold: Optional[float],
     distance_threshold: Optional[float],
+    max_length_percentile: Optional[float],
 ) -> None:
     if opacity_threshold is not None:
         if not np.isfinite(opacity_threshold) or not 0.0 <= opacity_threshold <= 1.0:
@@ -43,6 +44,11 @@ def _validate_thresholds(
         if not np.isfinite(distance_threshold) or distance_threshold < 0.0:
             raise ValueError(
                 "--final_distance_cull must be finite and greater than or equal to 0"
+            )
+    if max_length_percentile is not None:
+        if not np.isfinite(max_length_percentile) or not 0.0 <= max_length_percentile <= 100.0:
+            raise ValueError(
+                "--final_maxLength_percentile_cull must be finite and in [0, 100]"
             )
 
 
@@ -119,6 +125,40 @@ def max_length_remove_mask_from_log_scales(log_scales: np.ndarray) -> np.ndarray
     return (long_axis < lower) | (long_axis > upper)
 
 
+def max_length_percentile_remove_mask_from_log_scales(
+    log_scales: np.ndarray, percentile: float
+) -> np.ndarray:
+    """Return the shortest ``percentile`` percent of physical long axes.
+
+    Rows are selected by a stable ascending sort so the number removed is
+    deterministic even when several axes have the same length.
+    """
+    log_scales = np.asarray(log_scales, dtype=np.float64)
+    if log_scales.ndim != 2 or log_scales.shape[1] != 3:
+        raise ValueError("log_scales must have shape [N, 3]")
+    if not np.isfinite(log_scales).all():
+        raise ValueError("log_scales contains NaN or infinity")
+    if not np.isfinite(percentile) or not 0.0 <= percentile <= 100.0:
+        raise ValueError(
+            "max-length percentile must be finite and in [0, 100]"
+        )
+
+    remove = np.zeros(len(log_scales), dtype=bool)
+    count = int(np.ceil(len(log_scales) * percentile / 100.0))
+    if count == 0:
+        return remove
+    if count == len(log_scales):
+        remove[:] = True
+        return remove
+
+    long_axis = np.exp(np.max(log_scales, axis=1))
+    if not np.isfinite(long_axis).all():
+        raise ValueError("long-axis scale contains a value outside the finite range")
+    shortest_indices = np.argsort(long_axis, kind="stable")[:count]
+    remove[shortest_indices] = True
+    return remove
+
+
 def _ratio_remove_mask(data: np.ndarray, threshold: float) -> np.ndarray:
     scale_names = ("scale_0", "scale_1", "scale_2")
     log_scales = np.column_stack([_finite_field(data, name) for name in scale_names])
@@ -129,6 +169,14 @@ def _max_length_remove_mask(data: np.ndarray) -> np.ndarray:
     scale_names = ("scale_0", "scale_1", "scale_2")
     log_scales = np.column_stack([_finite_field(data, name) for name in scale_names])
     return max_length_remove_mask_from_log_scales(log_scales)
+
+
+def _max_length_percentile_remove_mask(
+    data: np.ndarray, percentile: float
+) -> np.ndarray:
+    scale_names = ("scale_0", "scale_1", "scale_2")
+    log_scales = np.column_stack([_finite_field(data, name) for name in scale_names])
+    return max_length_percentile_remove_mask_from_log_scales(log_scales, percentile)
 
 
 def _load_colmap_camera_centers(source_path: Path) -> np.ndarray:
@@ -241,9 +289,15 @@ def cull_ply(
     max_length_cull: bool = False,
     distance_threshold: Optional[float] = None,
     source_path: Optional[Path] = None,
+    max_length_percentile: Optional[float] = None,
 ) -> dict[str, int]:
     """Filter a standard Gaussian PLY and return row-count statistics."""
-    _validate_thresholds(opacity_threshold, ratio_threshold, distance_threshold)
+    _validate_thresholds(
+        opacity_threshold,
+        ratio_threshold,
+        distance_threshold,
+        max_length_percentile,
+    )
     input_path = input_path.expanduser()
     output_path = output_path.expanduser()
     if input_path.resolve() == output_path.resolve():
@@ -259,6 +313,7 @@ def cull_ply(
     remove_ratio = np.zeros(len(vertex.data), dtype=bool)
     remove_max_length = np.zeros(len(vertex.data), dtype=bool)
     remove_distance = np.zeros(len(vertex.data), dtype=bool)
+    remove_max_length_percentile = np.zeros(len(vertex.data), dtype=bool)
 
     if opacity_threshold is not None:
         _require_fields(("opacity",), names)
@@ -281,7 +336,24 @@ def cull_ply(
             distance_threshold,
         )
 
-    remove = remove_opacity | remove_ratio | remove_max_length | remove_distance
+    pre_percentile_keep = ~(
+        remove_opacity | remove_ratio | remove_max_length | remove_distance
+    )
+    if max_length_percentile is not None:
+        _require_fields(("scale_0", "scale_1", "scale_2"), names)
+        percentile_mask = _max_length_percentile_remove_mask(
+            vertex.data[pre_percentile_keep],
+            max_length_percentile,
+        )
+        remove_max_length_percentile[pre_percentile_keep] = percentile_mask
+
+    remove = (
+        remove_opacity
+        | remove_ratio
+        | remove_max_length
+        | remove_distance
+        | remove_max_length_percentile
+    )
     kept_data = vertex.data[~remove]
     new_vertex = _filtered_vertex_element(vertex, kept_data)
 
@@ -302,6 +374,7 @@ def cull_ply(
         "removed_ratio": int(remove_ratio.sum()),
         "removed_max_length": int(remove_max_length.sum()),
         "removed_distance": int(remove_distance.sum()),
+        "removed_max_length_percentile": int(remove_max_length_percentile.sum()),
         "removed": int(remove.sum()),
         "output": len(kept_data),
     }
@@ -338,6 +411,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Remove Gaussians whose nearest camera distance is strictly above this value",
     )
+    parser.add_argument(
+        "--final_maxLength_percentile_cull",
+        dest="final_max_length_percentile_cull",
+        type=float,
+        default=None,
+        help="After other filters, remove the shortest long-axis percentile of remaining Gaussians",
+    )
     return parser
 
 
@@ -354,6 +434,7 @@ def main() -> None:
         max_length_cull=args.final_max_length_cull,
         distance_threshold=args.final_distance_cull,
         source_path=source_path,
+        max_length_percentile=args.final_max_length_percentile_cull,
     )
     print(f"Input:  {input_path}")
     if source_path is not None:
@@ -367,11 +448,16 @@ def main() -> None:
     print(f"Removed by ratio:      {stats['removed_ratio']}")
     print(f"Removed by max length:  {stats['removed_max_length']}")
     print(f"Removed by distance:    {stats['removed_distance']}")
+    print(
+        "Removed by max-length percentile: "
+        f"{stats['removed_max_length_percentile']}"
+    )
     if (
         args.final_opacity_cull is None
         and args.final_ratio_cull is None
         and not args.final_max_length_cull
         and args.final_distance_cull is None
+        and args.final_max_length_percentile_cull is None
     ):
         print("No culling thresholds supplied; wrote a schema-preserving copy.")
 

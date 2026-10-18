@@ -931,6 +931,8 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
 --eval \
 --skip_train
 
+**增加一点删除阈值**
+
 unset CUDA_VISIBLE_DEVICES
 CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python final_cull.py \
 --input /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init.ply \
@@ -945,6 +947,8 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
 --curve_ply /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init2.ply \
 --eval \
 --skip_train
+
+**长度过大或者过小的被删除**
 
 unset CUDA_VISIBLE_DEVICES
 CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python final_cull.py \
@@ -966,6 +970,8 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
 --eval \
 --skip_train
 
+**距离严格大于阈值的高斯被删除，等于阈值的高斯保留**
+滤除5m以外的
 conda run -n curveGS python final_cull.py \
 --input /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init.ply \
 --output /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init4.ply \
@@ -973,7 +979,11 @@ conda run -n curveGS python final_cull.py \
 --final_opacity_cull 0.8 \
 --final_ratio_cull 5.0 \
 --final_distance_cull 5.0
-
+Gaussians: 663690 -> 215376 (removed 448314)
+Removed by opacity:    87333
+Removed by ratio:      357962
+Removed by max length:  0
+Removed by distance:    78651
 unset CUDA_VISIBLE_DEVICES
 CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
 -s /data1/data/jhc/datasets/sand_night2 \
@@ -981,6 +991,38 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
 --curve_ply /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init4.ply \
 --eval \
 --skip_train
+
+滤除3m以外的
+conda run -n curveGS python final_cull.py \
+--input /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init.ply \
+--output /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init5.ply \
+-s /data1/data/jhc/datasets/sand_night2 \
+--final_opacity_cull 0.8 \
+--final_ratio_cull 5.0 \
+--final_distance_cull 3.0
+Gaussians: 663690 -> 65560 (removed 598130)
+Removed by opacity:    87333
+Removed by ratio:      357962
+Removed by max length:  0
+Removed by distance:    457633
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
+-s /data1/data/jhc/datasets/sand_night2 \
+-m /data1/data/jhc/output/3dgs_output/sand_night2 \
+--curve_ply /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init5.ply \
+--eval \
+--skip_train
+
+**太短，10%最短的删除**
+conda run -n curveGS python final_cull.py \
+--input /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init.ply \
+--output /data1/data/jhc/output/curve_output/sand_night2/curve_init6.ply \
+-s /data1/data/jhc/datasets/sand_night2 \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0 \
+--final_distance_cull 3.0 \
+--final_maxLength_percentile_cull 10
+
 
 26. soccer1-3
 **先测试**
@@ -1097,7 +1139,7 @@ PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
 /data1/data/jhc/output/3dgs_output/soccer1-2 \
 0
 
-
+[test] PSNR: 23.5863  SSIM: 0.8971  LPIPS: 0.1454 [18/10 17:48:04]
 
 
 
