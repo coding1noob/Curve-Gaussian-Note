@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import json
 import tempfile
 import sys
 import unittest
@@ -86,6 +87,7 @@ class FinalCullTests(unittest.TestCase):
                     "removed_opacity": 1,
                     "removed_ratio": 1,
                     "removed_max_length": 0,
+                    "removed_distance": 0,
                     "removed": 2,
                     "output": 2,
                 },
@@ -194,6 +196,76 @@ class FinalCullTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "scale_1"):
                 final_cull.cull_ply(source, output, max_length_cull=True)
 
+    def test_distance_cull_uses_nearest_camera_and_strict_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            source = directory / "input.ply"
+            output = directory / "output.ply"
+            rows = make_vertex()
+            rows["x"] = [0.0, 3.0, 4.0, 10.0]
+            rows["y"] = 0.0
+            rows["z"] = 0.0
+            write_ply(source, rows)
+            (directory / "cameras.json").write_text(
+                json.dumps(
+                    [
+                        {"position": [0.0, 0.0, 0.0]},
+                        {"position": [10.0, 0.0, 0.0]},
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            stats = final_cull.cull_ply(source, output, distance_threshold=3.0)
+            result = PlyData.read(str(output))["vertex"].data
+
+            self.assertEqual(stats["removed_distance"], 1)
+            self.assertEqual(stats["removed"], 1)
+            self.assertEqual(result["x"].tolist(), [0.0, 3.0, 10.0])
+
+    def test_distance_cull_is_disabled_without_threshold(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            source = directory / "input.ply"
+            output = directory / "output.ply"
+            rows = np.empty(1, dtype=[("custom", "f4")])
+            rows["custom"] = 1.0
+            write_ply(source, rows)
+
+            stats = final_cull.cull_ply(source, output)
+
+            self.assertEqual(stats["removed_distance"], 0)
+            self.assertEqual(stats["output"], 1)
+
+    def test_distance_cull_validates_threshold_camera_file_and_coordinates(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            source = directory / "input.ply"
+            output = directory / "output.ply"
+            write_ply(source, make_vertex())
+
+            with self.assertRaisesRegex(ValueError, "finite and greater than or equal to 0"):
+                final_cull.cull_ply(source, output, distance_threshold=-1.0)
+            with self.assertRaisesRegex(ValueError, "finite and greater than or equal to 0"):
+                final_cull.cull_ply(source, output, distance_threshold=float("nan"))
+            with self.assertRaisesRegex(ValueError, "Camera file not found"):
+                final_cull.cull_ply(source, output, distance_threshold=1.0)
+
+            (directory / "cameras.json").write_text("[]", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "non-empty list"):
+                final_cull.cull_ply(source, output, distance_threshold=1.0)
+
+            rows = np.empty(1, dtype=[("x", "f4"), ("y", "f4"), ("z", "f4")])
+            rows["x"] = 0.0
+            rows["y"] = 0.0
+            rows["z"] = np.nan
+            write_ply(source, rows)
+            (directory / "cameras.json").write_text(
+                json.dumps([{"position": [0.0, 0.0, 0.0]}]), encoding="utf-8"
+            )
+            with self.assertRaisesRegex(ValueError, "z.*NaN"):
+                final_cull.cull_ply(source, output, distance_threshold=1.0)
+
     def test_default_output_name(self) -> None:
         self.assertEqual(
             final_cull.default_output_path(
@@ -205,6 +277,32 @@ class FinalCullTests(unittest.TestCase):
             final_cull.default_output_path(Path("/tmp/input.ply")),
             Path("/tmp/input_final_cull.ply"),
         )
+
+    def test_distance_cull_combines_with_other_filters(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            source = directory / "input.ply"
+            output = directory / "output.ply"
+            rows = make_vertex()
+            rows["x"] = [0.0, 1.0, 3.0, 10.0]
+            rows["y"] = 0.0
+            rows["z"] = 0.0
+            write_ply(source, rows)
+            (directory / "cameras.json").write_text(
+                json.dumps([{"position": [0.0, 0.0, 0.0]}]), encoding="utf-8"
+            )
+
+            stats = final_cull.cull_ply(
+                source,
+                output,
+                opacity_threshold=0.5,
+                distance_threshold=2.0,
+            )
+
+            self.assertEqual(stats["removed_opacity"], 1)
+            self.assertEqual(stats["removed_distance"], 2)
+            self.assertEqual(stats["removed"], 3)
+            self.assertEqual(stats["output"], 1)
 
     def test_validation_and_missing_fields(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -806,6 +806,7 @@ PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
  [test] PSNR: 17.2458  SSIM: 0.5084  LPIPS: 0.5662 [16/10 14:30:06]
  
 24. 
+**先测试**
 python test_colmap_reader.py \
 -s /home/gamma/storage_of_code/habitat-sim/camera_output/soccer2/colmap \
 -m output/test/soccer2 \
@@ -945,13 +946,146 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
 --eval \
 --skip_train
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python final_cull.py \
+--input /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init.ply \
+--output /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init3.ply \
+--final_opacity_cull 0.8 \
+--final_ratio_cull 5.0 \
+--final_maxLength_cull
+Gaussians: 663690 -> 243484 (removed 420206)
+Removed by opacity:    87333
+Removed by ratio:      357962
+Removed by max length:  12204
 
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
+-s /data1/data/jhc/datasets/sand_night2 \
+-m /data1/data/jhc/output/3dgs_output/sand_night2 \
+--curve_ply /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init3.ply \
+--eval \
+--skip_train
 
+conda run -n curveGS python final_cull.py \
+--input /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init.ply \
+--output /data1/data/jhc/output/curve_output/sand_night2/curve_3dgs_init4.ply \
+--final_opacity_cull 0.8 \
+--final_ratio_cull 5.0 \
+--final_distance_cull 5.0
 
+26. soccer1-3
+**先测试**
+python test_colmap_reader.py \
+-s /home/gamma/storage_of_code/habitat-sim/camera_output/soccer1-3/colmap \
+-m output/test/soccer1-3 \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 2 \
+--fill_y_threshold 0.1 \
+--fill_z_threshold 2 \
+--fill_grid_resX 300 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 100 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 5
+Simplyfill3 填充后总点数: 451080 points
 
+PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 \
+"$PYTHON" train.py \
+-s /data1/data/jhc/datasets/soccer1-3 \
+-m /data1/data/jhc/output/curve_output/soccer1-3 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 2 \
+--fill_y_threshold 0.1 \
+--fill_z_threshold 2 \
+--fill_grid_resX 300 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 5 \
+--SGCR \
+--final_opacity_cull 0.8 \
+--final_ratio_cull 2.0
 
+PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/soccer1-3/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/soccer1-3 \
+/data1/data/jhc/output/3dgs_output/soccer1-3 \
+1
 
+27. soccer1-2
+**先测试**
+python test_colmap_reader.py \
+-s /home/gamma/storage_of_code/habitat-sim/camera_output/soccer1-2/colmap \
+-m output/test/soccer1-2 \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 2 \
+--fill_y_threshold 0.1 \
+--fill_z_threshold 2 \
+--fill_grid_resX 300 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 100 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 5
+Simplyfill3 填充后总点数: 511153 points
 
+PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 \
+"$PYTHON" train.py \
+-s /data1/data/jhc/datasets/soccer1-2 \
+-m /data1/data/jhc/output/curve_output/soccer1-2 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 2 \
+--fill_y_threshold 0.1 \
+--fill_z_threshold 2 \
+--fill_grid_resX 300 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 100 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 5 \
+--SGCR \
+--final_opacity_cull 0.8 \
+--final_ratio_cull 2.0
+
+PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/soccer1-2/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/soccer1-2 \
+/data1/data/jhc/output/3dgs_output/soccer1-2 \
+0
 
 
 
