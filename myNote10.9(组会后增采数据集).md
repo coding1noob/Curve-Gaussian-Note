@@ -1036,125 +1036,8 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python render_curve.py \
 --eval \
 --skip_train
 
-26. soccer1-3
-**先测试**
-python test_colmap_reader.py \
--s /home/gamma/storage_of_code/habitat-sim/camera_output/soccer1-3/colmap \
--m output/test/soccer1-3 \
---eval \
---init_voxel_size 0.01 \
---method 3 \
---fill_x_threshold 2 \
---fill_y_threshold 0.1 \
---fill_z_threshold 2 \
---fill_grid_resX 300 \
---fill_grid_resY 50 \
---fill_grid_resZ 100 \
---trajectory_root \
---init_voxel_size 0.01 \
---outlier_nb_points 5 \
---outlier_nb_neighbors 5 \
---outlier_std_ratio 0.01 \
---camera_point_distance 5
-Simplyfill3 填充后总点数: 451080 points
-
-PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 \
-"$PYTHON" train.py \
--s /data1/data/jhc/datasets/soccer1-3 \
--m /data1/data/jhc/output/curve_output/soccer1-3 \
---eval \
---iterations 30000 \
---fill_method simplefill3 \
---trajectory_root \
---fill_x_threshold 2 \
---fill_y_threshold 0.1 \
---fill_z_threshold 2 \
---fill_grid_resX 300 \
---fill_grid_resY 50 \
---fill_grid_resZ 100 \
---n_gaussians 3 \
---simple \
---lambda_points_conn 0 \
---init_voxel_size 0.01 \
---outlier_nb_points 5 \
---outlier_nb_neighbors 5 \
---outlier_std_ratio 0.01 \
---camera_point_distance 5 \
---SGCR \
---final_opacity_cull 0.8 \
---final_ratio_cull 2.0
-
-PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
-./nextStep.sh \
-/data1/data/jhc/output/curve_output/soccer1-3/curve_3dgs_init.ply \
-/data1/data/jhc/datasets/soccer1-3 \
-/data1/data/jhc/output/3dgs_output/soccer1-3 \
-1
-[test] PSNR: 18.2967  SSIM: 0.7144  LPIPS: 0.2500 [18/10 16:59:54]
-
-27. soccer1-2
-**先测试**
-python test_colmap_reader.py \
--s /home/gamma/storage_of_code/habitat-sim/camera_output/soccer1-2/colmap \
--m output/test/soccer1-2 \
---eval \
---init_voxel_size 0.01 \
---method 3 \
---fill_x_threshold 2 \
---fill_y_threshold 0.1 \
---fill_z_threshold 2 \
---fill_grid_resX 300 \
---fill_grid_resY 50 \
---fill_grid_resZ 100 \
---trajectory_root \
---init_voxel_size 0.01 \
---outlier_nb_points 5 \
---outlier_nb_neighbors 5 \
---outlier_std_ratio 0.01 \
---camera_point_distance 5
-Simplyfill3 填充后总点数: 511153 points
-
-PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
-unset CUDA_VISIBLE_DEVICES
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 \
-"$PYTHON" train.py \
--s /data1/data/jhc/datasets/soccer1-2 \
--m /data1/data/jhc/output/curve_output/soccer1-2 \
---eval \
---iterations 30000 \
---fill_method simplefill3 \
---trajectory_root \
---fill_x_threshold 2 \
---fill_y_threshold 0.1 \
---fill_z_threshold 2 \
---fill_grid_resX 300 \
---fill_grid_resY 50 \
---fill_grid_resZ 100 \
---n_gaussians 3 \
---simple \
---lambda_points_conn 0 \
---init_voxel_size 0.01 \
---outlier_nb_points 5 \
---outlier_nb_neighbors 5 \
---outlier_std_ratio 0.01 \
---camera_point_distance 5 \
---SGCR \
---final_opacity_cull 0.8 \
---final_ratio_cull 2.0
-
-PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
-./nextStep.sh \
-/data1/data/jhc/output/curve_output/soccer1-2/curve_3dgs_init.ply \
-/data1/data/jhc/datasets/soccer1-2 \
-/data1/data/jhc/output/3dgs_output/soccer1-2 \
-0
-
-[test] PSNR: 23.5863  SSIM: 0.8971  LPIPS: 0.1454 [18/10 17:48:04]
-
 28. sand_night3
-**先测试**
+
 python test_colmap_reader.py \
 -s /home/gamma/storage_of_code/habitat-sim/camera_output/sand_night3/colmap \
 -m output/test/sand_night3 \
@@ -1164,16 +1047,16 @@ python test_colmap_reader.py \
 --fill_x_threshold 3 \
 --fill_y_threshold 3 \
 --fill_z_threshold 0.5 \
---fill_grid_resX 50 \
---fill_grid_resY 50 \
---fill_grid_resZ 10 \
+--fill_grid_resX 150 \
+--fill_grid_resY 150 \
+--fill_grid_resZ 30 \
 --trajectory_root \
 --init_voxel_size 0.01 \
 --outlier_nb_points 5 \
 --outlier_nb_neighbors 5 \
 --outlier_std_ratio 0.01 \
 --camera_point_distance 3
-Simplyfill3 填充后总点数: 16637 points
+Simplyfill3 填充后总点数: 304666 points
 
 PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
 unset CUDA_VISIBLE_DEVICES
@@ -1188,9 +1071,9 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 \
 --fill_x_threshold 3 \
 --fill_y_threshold 3 \
 --fill_z_threshold 0.5 \
---fill_grid_resX 50 \
---fill_grid_resY 50 \
---fill_grid_resZ 10 \
+--fill_grid_resX 150 \
+--fill_grid_resY 150 \
+--fill_grid_resZ 30 \
 --n_gaussians 3 \
 --simple \
 --lambda_points_conn 0 \
@@ -1201,6 +1084,455 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 \
 --camera_point_distance 3 \
 --SGCR \
 --final_opacity_cull 0.5 \
---final_ratio_cull 2.0
+--final_ratio_cull 2.0 \
+--final_distance_cull 3.0 \
+--final_maxLength_percentile_cull 10
+
+PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/sand_night3/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/sand_night3 \
+/data1/data/jhc/output/3dgs_output/sand_night3 \
+0
+[test] PSNR: 28.9817  SSIM: 0.8638  LPIPS: 0.1626 [19/10 09:19:52]
+
+
+30. soccer4
+**先测试**
+python test_colmap_reader.py \
+-s /home/gamma/storage_of_code/habitat-sim/camera_output/soccer4 \
+-m output/test/soccer4 \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 2 \
+--fill_y_threshold 0.1 \
+--fill_z_threshold 2 \
+--fill_grid_resX 150 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 50 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 5
+Simplyfill3 填充后总点数: 308880 points
+
+165上跑
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 \
+python train.py \
+-s /data2/jhc/datasets/soccer4 \
+-m /data2/jhc/output/curve_output/soccer4 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 2 \
+--fill_y_threshold 0.1 \
+--fill_z_threshold 2 \
+--fill_grid_resX 150 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 50 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 5 \
+--SGCR \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0 \
+--final_distance_cull 5.0 \
+--final_maxLength_percentile_cull 10
+
+./nextStep.sh \
+/data2/jhc/output/curve_output/soccer4/curve_3dgs_init.ply \
+/data2/jhc/datasets/soccer4 \
+/data2/jhc/output/3dgs_output/soccer4 \
+2
+
+167上跑
+
+PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 \
+"$PYTHON" train.py \
+-s /data1/data/jhc/datasets/soccer4 \
+-m /data1/data/jhc/output/curve_output/soccer4 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 2 \
+--fill_y_threshold 0.1 \
+--fill_z_threshold 2 \
+--fill_grid_resX 150 \
+--fill_grid_resY 50 \
+--fill_grid_resZ 50 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 5 \
+--SGCR \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0 \
+--final_distance_cull 5.0 \
+--final_maxLength_percentile_cull 10
+
+PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/soccer4/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/soccer4 \
+/data1/data/jhc/output/3dgs_output/soccer4 \
+1
+
+
+31. sand_sun2
+
+python test_colmap_reader.py \
+-s /home/gamma/storage_of_code/habitat-sim/camera_output/sand_sun2/colmap \
+-m output/test/sand_sun2 \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 3 \
+--fill_y_threshold 3 \
+--fill_z_threshold 0.2 \
+--fill_grid_resX 150 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 30 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 2
+Simplyfill3 填充后总点数: 142714 points
+
+PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 \
+"$PYTHON" train.py \
+-s /data1/data/jhc/datasets/sand_sun2 \
+-m /data1/data/jhc/output/curve_output/sand_sun2 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 3 \
+--fill_y_threshold 3 \
+--fill_z_threshold 0.2 \
+--fill_grid_resX 150 \
+--fill_grid_resY 100 \
+--fill_grid_resZ 30 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 2 \
+--SGCR \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0 \
+--final_distance_cull 2.0 \
+--final_maxLength_percentile_cull 10
+
+PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/sand_sun2/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/sand_sun2 \
+/data1/data/jhc/output/3dgs_output/sand_sun2 \
+2
+[test] PSNR: 19.0896  SSIM: 0.7232  LPIPS: 0.2578 [19/10 21:23:43]
+
+
+32. 165上跑tennis1
+**先测试**
+python test_colmap_reader.py \
+-s /home/gamma/storage_of_code/habitat-sim/camera_output/tennis1/colmap \
+-m output/test/tennis1 \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 3 \
+--fill_y_threshold 3 \
+--fill_z_threshold 0.5 \
+--fill_grid_resX 150 \
+--fill_grid_resY 150 \
+--fill_grid_resZ 30 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 3 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 5
+Simplyfill3 填充后总点数: 190405 points
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 \
+python train.py \
+-s /data2/jhc/datasets/tennis1 \
+-m /data2/jhc/output/curve_output/tennis1 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 3 \
+--fill_y_threshold 3 \
+--fill_z_threshold 0.5 \
+--fill_grid_resX 150 \
+--fill_grid_resY 150 \
+--fill_grid_resZ 30 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 3 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 5 \
+--SGCR \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0 \
+--final_distance_cull 5.0 \
+--final_maxLength_percentile_cull 10
+[SGCR] final prune: 72403 -> 21530 curves [20/10 12:40:44]
+Saved /data2/jhc/output/curve_output/tennis1/curve_3dgs_init.ply for 3DGS_NOTE initialization. [20/10 12:40:45]
+[final cull] curve_3dgs_init.ply: 64590 -> 57531 (distance=666, max-length-percentile=6393) [20/10 12:40:45]
+
+./nextStep.sh \
+/data2/jhc/output/curve_output/tennis1/curve_3dgs_init.ply \
+/data2/jhc/datasets/tennis1 \
+/data2/jhc/output/3dgs_output/tennis1 \
+2
+
+[test] PSNR: 25.9999  SSIM: 0.8948  LPIPS: 0.1316 [20/10 14:12:45]
+
+33. factory数据集
+**先测试**
+python test_colmap_reader.py \
+-s /home/gamma/storage_of_code/habitat-sim/camera_output/factory/colmap \
+-m output/test/factory \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 2 \
+--fill_y_threshold 0.3 \
+--fill_z_threshold 0.3 \
+--fill_grid_resX 800 \
+--fill_grid_resY 30 \
+--fill_grid_resZ 30 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 3
+Simplyfill3 填充后总点数: 248057 points
+
+
+
+
+
+PYTHON=/data1/conda_env/buaajhc/curveGS/bin/python
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 \
+"$PYTHON" train.py \
+-s /data1/data/jhc/datasets/factory \
+-m /data1/data/jhc/output/curve_output/factory \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 2 \
+--fill_y_threshold 0.3 \
+--fill_z_threshold 0.3 \
+--fill_grid_resX 800 \
+--fill_grid_resY 30 \
+--fill_grid_resZ 30 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0 \
+--final_distance_cull 3.0 \
+--final_maxLength_percentile_cull 10
+
+PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
+./nextStep.sh \
+/data1/data/jhc/output/curve_output/factory/curve_3dgs_init.ply \
+/data1/data/jhc/datasets/factory \
+/data1/data/jhc/output/3dgs_output/factory \
+0
+
+cd ../gaussian-splatting/
+conda activate gs
+
+./run_exp.sh \
+/data1/data/jhc/datasets/factory \
+/data1/jhc/storage_of_code/gaussian-splatting/output/factory \
+0
+
+
+34. factory2数据集(165跑)
+**先测试**
+python test_colmap_reader.py \
+-s /home/gamma/storage_of_code/habitat-sim/camera_output/factory2/colmap \
+-m output/test/factory2 \
+--eval \
+--init_voxel_size 0.01 \
+--method 3 \
+--fill_x_threshold 2 \
+--fill_y_threshold 0.3 \
+--fill_z_threshold 0.3 \
+--fill_grid_resX 800 \
+--fill_grid_resY 30 \
+--fill_grid_resZ 30 \
+--trajectory_root \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 3
+Simplyfill3 填充后总点数: 142126 points
+
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=4 \
+python train.py \
+-s /data2/jhc/datasets/factory2 \
+-m /data2/jhc/output/curve_output/factory2 \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 2 \
+--fill_y_threshold 0.3 \
+--fill_z_threshold 0.3 \
+--fill_grid_resX 800 \
+--fill_grid_resY 30 \
+--fill_grid_resZ 30 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0 \
+--final_distance_cull 3.0 \
+--final_maxLength_percentile_cull 10
+
+PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
+./nextStep.sh \
+/data2/jhc/output/curve_output/factory2/curve_3dgs_init.ply \
+/data2/jhc/datasets/factory2 \
+/data2/jhc/output/3dgs_output/factory2 \
+4
+
+[test] PSNR: 25.2005  SSIM: 0.8137  LPIPS: 0.2657 [23/10 03:17:13]
+
+**noblack跑一次**
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 \
+python train.py \
+-s /data2/jhc/datasets/factory2_noblack \
+-m /data2/jhc/output/curve_output/factory2_noblack \
+--eval \
+--iterations 30000 \
+--fill_method simplefill3 \
+--trajectory_root \
+--fill_x_threshold 2 \
+--fill_y_threshold 0.3 \
+--fill_z_threshold 0.3 \
+--fill_grid_resX 800 \
+--fill_grid_resY 30 \
+--fill_grid_resZ 30 \
+--n_gaussians 3 \
+--simple \
+--lambda_points_conn 0 \
+--init_voxel_size 0.01 \
+--outlier_nb_points 5 \
+--outlier_nb_neighbors 5 \
+--outlier_std_ratio 0.01 \
+--camera_point_distance 3 \
+--SGCR \
+--final_opacity_cull 0.5 \
+--final_ratio_cull 2.0 \
+--final_distance_cull 3.0 \
+--final_maxLength_percentile_cull 10
+
+PATH=/data1/conda_env/buaajhc/curveGS/bin:$PATH \
+./nextStep.sh \
+/data2/jhc/output/curve_output/factory2_noblack/curve_3dgs_init.ply \
+/data2/jhc/datasets/factory2_noblack \
+/data2/jhc/output/3dgs_output/factory2_noblack \
+2
+
+[test] PSNR: 22.4632  SSIM: 0.7637  LPIPS: 0.3005 [23/10 12:06:53]
+
+
+
+python ply_to_usd.py \
+/home/gamma/storage_of_code/gs_seldom/3dgs_output/net/Net6/ours/iteration_30000/point_cloud.ply
+
+
+35. buaa_net
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python train.py \
+-s /data1/jhc/datasets/buaa_net \
+-m /data2/jhc/output/3dgs_output/918_sh3/buaaNet_pic_Oct30 \
+--eval \
+--disable_viewer \
+--curvegs /data1/jhc/storage_of_code/Curve-Gaussian-Note/output/buaa_net_simple-3/curve_3dgs_init.ply \
+--curvegs_inject_iteration 3000 \
+--edge_non_edge_loss \
+--use_outside_Loss \
+--outside_dilation_radius 1 \
+--outside_alpha_margin 0.0 \
+--lambda_outside_rgb 1.0
+
+unset CUDA_VISIBLE_DEVICES
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python render_PGSR.py \
+-s /data1/jhc/datasets/buaa_net \
+-m /data2/jhc/output/3dgs_output/918_sh3/buaaNet_pic_Oct30 \
+--iteration 30000 \
+--eval
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

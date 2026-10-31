@@ -2,6 +2,7 @@ import torch.nn.functional as F
 import os
 import csv
 import tempfile
+import shutil
 from pathlib import Path
 import open3d as o3d
 import torch
@@ -275,6 +276,22 @@ def save_curve_gaussians_for_3dgs_note(gaussians, path, sh_degree=3, rgb=None):
     # 直接写成标准 PLY，供 3DGS_NOTE 后续读取初始化。
     PlyData([PlyElement.describe(elements, "vertex")], text=False).write(path)
     print(f"Saved {path} for 3DGS_NOTE initialization.")
+
+@torch.no_grad()
+def save_iteration_curve_ply(gaussians, model_path, iteration, final_ply=None):
+    """Export renderable snapshots; reuse the fully culled PLY for the final step."""
+    path = os.path.join(model_path, f"curve_3dgs_init_iter_{iteration}.ply")
+    if final_ply is not None:
+        shutil.copyfile(final_ply, path)
+    else:
+        # Geometry caches may be stale after optimizer updates or curve splitting.
+        gaussians.prepare_scaling_rot()
+        save_curve_gaussians_for_3dgs_note(
+            gaussians, path, sh_degree=3, rgb=gaussians.get_rgb,
+        )
+    print(f"[ITER {iteration}] Saved renderable curve snapshot: {path}")
+    return path
+
 
 def Loss_part(dataset, viewpoint_cam, image, rend_alpha, iteration, opt):
     if dataset.use_RGB:
@@ -784,6 +801,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
 
+            if dataset.simple and iteration in saving_iterations and iteration < opt.iterations:
+                save_iteration_curve_ply(gaussians, scene.model_path, iteration)
+
         if hasattr(gaussians, 'prepare_scaling_rot'):
             gaussians.prepare_scaling_rot()
     
@@ -795,6 +815,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations,
         simple=dataset.simple,
         source_path=dataset.source_path,
     )
+    if dataset.simple and opt.iterations in saving_iterations:
+        save_iteration_curve_ply(
+            gaussians, scene.model_path, opt.iterations,
+            final_ply=os.path.join(scene.model_path, "curve_3dgs_init.ply"),
+        )
 
 def extract_curves(gaussians, opt, scene, simple=False, source_path=None):
      # meger_points:
@@ -1005,7 +1030,9 @@ if __name__ == "__main__":
     parser.add_argument('--debug_from', type=int, default=-1)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
     parser.add_argument("--test_iterations", nargs="+", type=int, default=[3_000, 10_000])
-    parser.add_argument("--save_iterations", nargs="+", type=int, default=[3_000, 10_000])
+    parser.add_argument("--save_iterations", nargs="+", type=int, default=[3_000, 10_000],
+                        help="Iterations to save; --simple exports curve_3dgs_init_iter_N.ply "
+                             "for render_curve.py. The final iteration is always included.")
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[10000])
     parser.add_argument("--start_checkpoint", type=str, default = None)
